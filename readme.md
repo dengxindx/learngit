@@ -6,6 +6,8 @@
 - 2、[nginx](#related-nginx)
 - 3、[CentOS7](#related-centos7)
 - 4、[https](#related-https)
+- 5、[zookeeper](#related-zookeeper)
+- 6、[redis](#related-redis)
 
 <a name="related-linux-IO"></a>
 ### 1、linux IO模式
@@ -632,7 +634,7 @@ http://tengine.taobao.org/document_cn/http_upstream_check_cn.html
 <a name="related-centos7"></a>
 ### 3、CentOS7
 
-<h4>防火墙</h4>
+防火墙
 ```properties
 CentOS7 里面是用firewalld来管理防火墙的
  
@@ -652,7 +654,7 @@ CentOS7 里面是用firewalld来管理防火墙的
     firewall-cmd --zone=public --remove-port=80/tcp --permanent
 ```
 
-<h4>端口查看</h4>
+端口查看
 ```text
 netstat -tunlp
 netstat -tunlp | grep xxx
@@ -661,7 +663,7 @@ netstat -tunlp | grep xxx
 <a name="related-https"></a>
 ### 4、https
 
-<h4>对称加密算法</h4>
+对称加密算法
 ```text
 DES：64位加密
 AES：
@@ -669,7 +671,7 @@ AES：
 RC4：
 ```
 
-<h4>非对称加密算法</h4>
+非对称加密算法
 ```text
 https使用的非对称加密
 RSA：
@@ -725,3 +727,1122 @@ server {
 证书生成：
 openssl req -x509 -nodes -days 365 -newkey rsa:1024 -keyout nginx.key -out nginx.crt
 ```
+
+<a name="related-zookeeper"></a>
+### 5、zookeeper
+
+CAP理论
+```text
+1、一致性（Consistency）
+2、可用性（Availability）
+3、分区容错性（Partition tolerance）
+
+CAP 原则指的是，这三个要素最多只能同时实现两点，不可能三者兼顾。
+
+```
+
+BASE理论
+```text
+我们无法做到强一致，但每个应用都可以根据自身的业务特点，采用适当的方式来使系统达到最终一致性。
+1、基本可用（BA, Basically Available）
+    指在分布式系统中，发生故障时，允许损失一部分功能，但是其它功能还是可用的。
+2、软状态（Soft State）
+    指分布式系统中，允许存在数据的中间状态，而中间状态又不会影响系统的可用性。
+3、最终一致性（Eventual Consistency）
+    分布式系统中的数据在一段时间后，最终能达到一致性。
+```
+
+2PC、3PC
+```text
+2PC，二阶段提交协议，即将事务的提交过程分为两个阶段来进行处理：准备阶段和提交阶段。事务的发起者称协调者，事务的执行者称参与者。
+3PC，三阶段提交协议，是2PC的改进版本，即将事务的提交过程分为CanCommit、PreCommit、do Commit三个阶段来进行处理。
+```
+zookeeper下载安装与启动停止
+```text
+#wget https://mirrors.tuna.tsinghua.edu.cn/apache/zookeeper/zookeeper-3.4.14/zookeeper-3.4.14.tar.gz
+#tar xvzf ./zookeeper-3.4.14.tar.gz
+ 
+conf/xxx.cfg：
+#Zookeeper数据存放目录
+dataDir=/tmp/zookeeper/server1/data
+ 
+#当前服务器对外服务端口  
+clientPort=2181  
+ 
+#Zookeeper日志文件存放目录
+dataLogDir=/tmp/zookeeper/server1/log
+ 
+#服务器集群信息
+server.1=ip1:数据通信端口1:选举端口1
+server.2=ip2:数据通信端口2:选举端口2 
+server.3=ip3:数据通信端口3:选举端口3  
+ 
+伪分布使用相同ip，不同端口，不同选举端口
+真分布使用不同ip，可以使用相同端口，相同选举端口
+ 
+*myid文件
+# 很重要，没有该文件启动不了，存放到dataDir目录下。服务器唯一标识
+# echo 1 > myid
+  
+启动
+bin># ./zkServer.sh start /root/dx/zookeeper/zookeeper-3.4.14/conf/zoo1.cfg
+ 
+停止
+bin># ./zkServer.sh stop /root/dx/zookeeper/zookeeper-3.4.14/conf/zoo1.cfg
+ 
+重启
+bin># ./zkServer.sh restart /root/dx/zookeeper/zookeeper-3.4.14/conf/zoo1.cfg
+  
+查看状态
+bin># ./zkServer.sh status /root/dx/zookeeper/zookeeper-3.4.14/conf/zoo3.cfg
+ 
+jps查看，需要先安装jdk
+```
+Quorum机制
+```text
+保证数据一致性,服务器数据更新过半数，则表示更新成功
+```
+ZK Shell和命令
+```text
+zookeeper基于Netty的长连接
+服务器有三个角色，leader、Follower、Observer
+leader：读、写、选举
+Follower：读、选举
+Observer：读
+```
+Znode
+```text
+zookeeper的数据模型，它是这一种树形结构，类似unix文件目录
+bin># zkCli.sh
+# 列出/下所有节点
+[zk: localhost:2181(CONNECTED) 9]> ls /
+ 
+# 创建节点/Tomcat和数据Tomcat（byte数组），不加 -e 表示持久节点。-s 表示顺序自增节点
+[zk: localhost:2181(CONNECTED) 9]> create /Tomcat Tomcat
+持久节点下存在的时候可创建自增的顺序节点，新创建的节点名会自动更改
+ 
+# 获取节点信息
+[zk: localhost:2181(CONNECTED) 9]> get /Tomcat
+ 
+# 获取节点状态
+[zk: localhost:2181(CONNECTED) 9]> stat /Tomcat
+ 
+# 修改节点
+[zk: localhost:2181(CONNECTED) 9]> set /Tomcat hello
+  
+属性值：
+czxid       long    节点被创建的zxid值
+mzxid       long    节点被修改的zxid值
+pzxid       long    子节点最后一次被修改时的事务id
+ctime       long    节点被创建的时间
+mtime       long    节点最后一次被修改的时间
+versoin     long    节点被修改的版本号
+cversion    long    节点的所拥有子节点被修改的版本号
+aversion    long    节点的ACL被修改的版本号
+emphemeralOwner long    如果此节点为临时节点，那么它的值为个节点拥有者的会话ID，否则值为0
+dataLength  int     节点数据长度
+numChildren int     节点拥有的子节点长度
+ 
+zxid，全局唯一
+ 
+CREATE(创建)  create 
+DELETE(删除)  delete  rmr
+READ(只读)    get ls ls2
+WRITE(只写)   set
+ 
+节点类型：
+持久节点（顺序）
+临时节点（顺序）
+ 
+```
+**注意：**
+- 同一个节点下不能存放同名node
+- 临时节点下不能再创建节点
+ 
+watch
+```text
+stat path [watch|.]
+ls path [watch|.]
+ls2 path [watch|.]
+get path [watch|.]
+ 
+watch只生效一次。
+```
+
+***原生zkjavaApi不支持级联创建znode***
+
+acl（Access control level）
+```text
+节点访问6种操作：
+①Read（1，读）
+②Write（2，写）
+③Create（4，创建）
+④Delete（8，删除）
+⑤Admin（16，节点管理）
+⑥all（0，全部操作）
+ 
+获取acl
+权限模式（Schema）、授权对象（ID）、权限（Permission） 
+[zk: localhost:2181(CONNECTED) 10] getAcl /
+ 'world,'anyone
+ : cdrwa
+  
+4种权限模式：
+①world：开放模式，所有人可以访问
+    create /test test world:anyone:cdrwa
+②ip：针对ip开放
+    create /test test ip:192.168.1.1:cdrwa
+③digest：用户密码模式(常用)
+    create /test test digest:username:password(账号密码进行过两次加密):cdwra
+    设置了用户名和密码需要添加权限用户才能访问这个/test
+    addauth digest username:password
+    digest会进行两次加密
+    Base64（sha1（username:password））
+④super：超级用户模式
+    create /test test 
+    
+修改权限：
+setAcl path acl   
+      
+使用zookeeper的javaApi加密用户名和密码：
+[root@localhost zookeeper-3.4.14]# java -cp ./zookeeper-3.4.14.jar:./lib/log4j-1.2.17.jar:./lib/slf4j-api-1.7.25.jar:./lib/slf4j-log4j12-1.7.25.jar org.apache.zookeeper.server.auth.DigestAuthenticationProvider test:123456
+     
+```
+
+一些问题：
+- 最少两个节点可对外服务
+- 4台机器挂掉2台就不能对外工作
+
+一致性解决方案：
+- 2PC/3PC
+- Paxos
+- Raft
+
+Paxos协议
+```text
+多数派、过半协议。
+三个角色：
+①Proposer：提交者
+②Acceptor：接收者
+③Learner：学习者
+ 
+条件设定：
+议案必须有编号。不重复增长
+议案两种（提交议案，批准议案）
+如果Acceptor没有接受议案，那么必须接受第一个议案
+接受编号大的议案，如果小于之前接受议案号，那么不接受 
+```
+
+Paxosx详解
+```text
+<K,V> 议案编号-》议案内容
+议员处理议案：ok-接受、error|reject-不接受|驳回
+ 
+几个阶段：
+①Prepare阶段（提交阶段，只提交议案编号，不提交内容）
+②Accept阶段（批准阶段,已经包含了k，v值）
+    Proposer提交议案，Acceptor没有处理过Prepare阶段则直接返回ok。
+Acceptor处理过Prepare阶段，判断提交的议案编号和之前收到的议案编号比较，小于的话则不接受|驳回
+否则下一步，没有批准过的议案则直接返回ok，如果有批准过的议案，则回复ok，和议案编号，内容给Proposer。
+判断回复ok的是否过半，没有的话则重新Prepare阶段。否则下一步，判断是否全部回复
+没有附带批准过的议案，是，则Proposer直接议案编号和内容，否则搜集回复中最大的议案编号和内容，发起请求，
+Acceptor接收到的编号大于已有最大议案编号，则批准该议案，否则不接受|驳回。最后判断是否回复过半，没有则Prepare阶段，否则下一步
+通知Learner开始学习议案
+```
+
+ZXID
+```text
+64位数据结构，分为高32位和低32位（是由leader产生的，而且是自增有序的）
+高32位用来存储epoch（年号。选举用）
+低32位用来存储事务编号
+ 
+有两种情况导致高32位变化：
+①低32位事务编号满了
+②Leader选举
+```
+
+ZAB协议
+```text
+两种基本模式：
+①崩溃恢复
+②消息广播
+ 
+三个阶段：
+①发现（leader选举）
+②同步（数据同步）
+③广播（正式接受请求）
+其中发现阶段等同于Paxos的 读阶段，广播阶段等同于Paxos的写阶段 
+ 
+数据同步：
+①直接差异化同步
+    有follower挂掉后，leader新更新了数据，这时挂掉的follower又加入了集群，数据是没有leader更新的那部分，
+ leader直接发送给follower更新有差异的数据，同步数据   
+②先回滚再差异化同步
+    原leader新写入事务后只在本地处理还没有发送到follower就挂掉了，此时follower选举了新的leader，并且
+新写入了事务，原leader恢复后加入集群，会多出它自己写入的事务，需要将这些事务删除掉，再进行差异化同步
+③仅回滚同步
+④全量同步
+    全新加入的follower
+     
+    
+```
+
+**格式化查看日志：**
+[root@localhost zookeeper-3.4.14]# java -cp ./zookeeper-3.4.14.jar:./lib/log4j-1.2.17.jar:./lib/slf4j-api-1.7.25.jar:./lib/slf4j-log4j12-1.7.25.jar org.apache.zookeeper.server.LogFormatter /usr/local/dx/zookeeper/server1/log/version-2/log.400000001
+ 
+**zk日志命名**：按照第一个写入的事务编号命名，初始化大小为4k，超过4k直接到64M，多余的用0填充
+
+chroot命名空间
+```text
+业务隔离
+ 
+[root@localhost bin]#./zkCli.sh -timeout 5000 -server localhost:2181/Tomcat
+ 
+如上，只会连接到localhost:2181/Tomcat上
+```
+
+**StaticHostProvider类**：zkApi自带的zk地址轮询
+
+zkSession会话
+```text
+五个状态
+connecting正在连接
+connected已经连接
+reconnecting重新连接
+reconnected重新连接上
+close关闭
+ 
+zkApi中
+initializeNextSession()初始化session
+ 
+分桶机制
+处理过期session，使用两个桶存储session，到一定时间点，将第一个桶内还存活的session复制到下个桶中，
+然后将第一个桶全部清空。
+```
+
+Leader选举：(启动，崩溃恢复，zxid低32位满了)
+```text
+投票步骤：
+每个服务器都有一张投票<myid,zxid>，先投自己
+搜集所有服务器投票结果
+比较投票，先根据zxid比较出最大的，没有结果则根据myid（唯一）比较出最大的
+ 
+Leader算法涉及类：
+FastLeaderElection
+
+org.apche.zookeeper.server.quorum.QuorumPeer
+选举节点类，该类用来设置一个报文套接字并响应当前Leader
+@Override
+public synchronized void start() {
+    loadDataBase();
+    cnxnFactory.start();        
+    startLeaderElection();
+    super.start();
+}
+ 
+org.apache.zookeeper.server.quorum.QuorumCnxManager
+选举通信连接管理类，该类使用TCP实现Leader选举过程中的连接管理
+ 
+final ConcurrentHashMap<Long, SendWorker> senderWorkerMap;
+为每个服务器都保存一个发送队列，用于发送消息，SendWorker是Thread子类
+ 
+final ConcurrentHashMap<Long, ArrayBlockingQueue<ByteBuffer>> queueSendMap;
+为每个参与投票的服务器保留一个队列
+ 
+final ConcurrentHashMap<Long, ByteBuffer> lastMessageSent;
+保存从其他节点发送的最后一条消息
+ 
+public final ArrayBlockingQueue<Message> recvQueue;
+接受消息队列
+   
+Notification
+接受其他服务器发来的选举投票信息
+ 
+ToSend
+发送给其他服务器的选举投票信息
+ 
+Messenger.WorkerReceiver
+线程类，不断地从QuorumCnxManager中获取其他服务器发来的选举消息，并将其转换成选票信息，保存在recvQueue中
+  
+Messenger.WorkerSender
+线程类，不断地从sendqueue中获取待发送的选票，并把选票交给QuorumCnxManager发送出去
+   
+   
+    
+org.apache.zookeeper.server.quorum.FastLeaderElection
+具体选举算法
+ 
+选举算法：
+服务器调用QuorumPeer.start()方法，在崩溃恢复过程中要进行Leader选举
+ 
+Leader选举方法startLeaderElection()被调用，在方法中需要确定一个选举方法
+ 
+
+```
+
+zkClient封装了原生zkapi，使用更简洁方便
+```text
+原生zkzpi缺点：
+会话链接异步
+序列化支持不透明
+watch需要重复注册
+session重连机制
+开发复杂性较高
+ 
+ zkClient个人编写的api，做了一些封装
+<!-- https://mvnrepository.com/artifact/com.101tec/zkclient -->
+<dependency>
+ <groupId>com.101tec</groupId>
+ <artifactId>zkclient</artifactId>
+ <version>0.11</version>
+</dependency>
+```
+ 
+Curator
+```text
+链式调用风格
+watch设置后不需要反复注册
+session超时重连
+递归节点创建
+多种分布式应用场景Recipe
+ 
+监听机制
+NodeCache类
+监听节点数据变化
+PathChildrenCache类
+监听子节点变化
+TreeCache类
+上面两种的结合
+<!-- https://mvnrepository.com/artifact/org.apache.curator/curator-recipes -->
+<!-- 所有典型应用场景。例如：分布式锁,Master选举等。需要依赖client和framework，需设置自动获取依赖。 -->
+<dependency>
+    <groupId>org.apache.curator</groupId>
+    <artifactId>curator-recipes</artifactId>
+    <version>4.2.0</version>
+</dependency>
+ 
+<!-- https://mvnrepository.com/artifact/org.apache.curator/curator-framework -->
+<!-- Zookeeper API的高层封装，大大简化Zookeeper客户端编程，添加了例如Zookeeper连接管理、重试机制等。 -->
+<dependency>
+ <groupId>org.apache.curator</groupId>
+ <artifactId>curator-framework</artifactId>
+ <version>4.2.0</version>
+</dependency>
+ 
+git地址：https://github.com/apache/curator 整个框架由下面这些模块组成：
+curator-recipes	所有典型应用场景。例如：分布式锁,Master选举等。需要依赖client和framework，需设置自动获取依赖。
+curator-async	jdk8 异步操作
+curator-framework	Zookeeper API的高层封装，大大简化Zookeeper客户端编程，添加了例如Zookeeper连接管理、重试机制等。
+curator-client	Zookeeper client的封装，用于取代原生的Zookeeper客户端（ZooKeeper类），提供一些非常有用的客户端特性。
+curator-test	包含TestingServer，TestingCluster和一些其他有助于测试的工具。
+curator-examples	各种使用Curator特性的例子。
+curator-x-discovery	服务注册发现，在SOA /分布式系统中，服务需要相互寻找。curator-x-discovery提供了服务注册，找到特定服务的单个实例，和通知服务实例何时更改。
+curator-x-discovery-server	服务注册发现管理器,可以和curator-x-discovery 或者非java程序程序使用RESTful Web服务以注册，删除，查询等服务。
+ 
+一般依赖recipes就可以了，内部依赖有client和framework 能用的上的功能都有了
+``` 
+ 
+Curator创建
+```java
+//CuratorFrameworkFactory创建，可链式调用创建连接
+//public static CuratorFramework newClient(String connectString, RetryPolicy retryPolicy);
+//public static CuratorFramework newClient(String connectString, int sessionTimeoutMs, int connectionTimeoutMs, RetryPolicy retryPolicy);
+  
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+ 
+public class Test {
+    public static void main(String[] args) {
+        String connectionStr = "192.168.75.133";
+        // 重试策略
+        ExponentialBackoffRetry retry = new ExponentialBackoffRetry(1000, 3, Integer.MAX_VALUE);
+ 
+        CuratorFramework curatorFramework = CuratorFrameworkFactory.newClient(connectionStr, retry);
+        curatorFramework.start();
+ 
+        CuratorFramework curatorFramework2 = CuratorFrameworkFactory.newClient(connectionStr, 60 * 1000, 15 * 1000, retry);
+        curatorFramework2.start();
+ 
+        CuratorFramework curatorFramework3 = CuratorFrameworkFactory.builder().connectString(connectionStr)
+                .sessionTimeoutMs(60 * 1000)
+                .connectionTimeoutMs(15 * 1000)
+                .namespace("Tomcat")
+                .retryPolicy(retry)
+                .build();
+        curatorFramework3.start();
+    }
+}
+``` 
+Curator重试策略
+- ExponentialBackoffRetry
+```text
+/**
+ * 随着重试次数增加重试时间间隔变大,指数倍增长baseSleepTimeMs * Math.max(1, random.nextInt(1 << (retryCount + 1)))。
+ * 有两个构造方法
+ * baseSleepTimeMs初始sleep时间
+ * maxRetries最多重试几次
+ * maxSleepMs最大的重试时间
+ * 如果在最大重试次数内,根据公式计算出的睡眠时间超过了maxSleepMs，将打印warn级别日志,并使用最大sleep时间。
+ * 如果不指定maxSleepMs，那么maxSleepMs的默认值为Integer.MAX_VALUE。
+ */
+public ExponentialBackoffRetry(int baseSleepTimeMs, int maxRetries);
+public ExponentialBackoffRetry(int baseSleepTimeMs, int maxRetries, int maxSleepMs);
+```
+- BoundedExponentialBackoffRetry
+```text
+/**
+ * 继承与ExponentialBackoffRetry ，BoundedExponentialBackoffRetry只有一个三个参数构造器，效果跟ExponentialBackoffRetry三个函数构造器是一样的,只是内部实现不一样。
+ * baseSleepTimeMs初始sleep时间
+ * maxSleepTimeMs最大sleep时间
+ * maxRetries最大重试次数
+ */
+public BoundedExponentialBackoffRetry(int baseSleepTimeMs, int maxSleepTimeMs, int maxRetries);
+```
+- RetryForever
+```text
+/**
+ * RetryForever：永远重试策略
+ * retryIntervalMs重试时间间隔
+ */
+public RetryForever(int retryIntervalMs);
+```
+- RetryNTimes
+```text
+/**
+ * RetryNTimes：重试N次
+ * n重试几次
+ * sleepMsBetweenRetries每次重试间隔时间
+ */
+public RetryNTimes(int n, int sleepMsBetweenRetries);
+```
+- RetryOneTime
+```text
+/**
+ * 这个类继承的RetryNTimes，其实是调用的父类方法
+ * RetryOneTime：只重试一次
+ * sleepMsBetweenRetry:每次重试间隔的时间
+ */
+public RetryOneTime(int sleepMsBetweenRetry);
+```
+- RetryUntilElapsed
+```text
+/**
+ * RetryUntilElapsed：一直重试，直到超过指定时间
+ * maxElapsedTimeMs最大重试时间
+ * sleepMsBetweenRetries每次重试间隔时间
+ */
+public RetryUntilElapsed(int maxElapsedTimeMs, int sleepMsBetweenRetries);
+```
+- SleepingRetry抽象类
+
+Curator测试基本的增删改查(测试linux开放防火墙端口)
+```java
+package tool;
+ 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.ZooDefs;
+import org.apache.zookeeper.data.Stat;
+ 
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+ 
+/**
+ <dependency>
+ <groupId>org.apache.curator</groupId>
+ <artifactId>curator-recipes</artifactId>
+ <version>4.2.0</version>
+ </dependency>
+ */
+public class Test {
+    // 伪分布式集群
+    public static final String connectionString = "192.168.75.133:2181,192.168.75.133:2182,192.168.75.133:2183";
+ 
+    public static void main(String[] args) throws Exception {
+//            t1(); // 增加节点
+//            t2();   // 修改节点
+//            t3();   // 删除节点
+//            t4();   // 查看节点信息
+//            t5();   // 获取某个节点下的子节点列表
+    }
+ 
+    private static void t5() throws Exception {
+        CuratorFramework client = getClient();
+ 
+        String nodePath = "/";          // 获取命名空间test下的所有子节点
+ 
+        List<String> list = client.getChildren().forPath(nodePath);
+        System.out.println(client.getNamespace() + nodePath + " 节点下的子节点列表：");
+        for (String childNode : list) {
+            System.out.println(childNode);
+        }
+ 
+        // 节点路径
+        String nodePath2 = "/test2";
+        // 查询某个节点是否存在，存在就会返回该节点的状态信息，如果不存在的话则返回空
+        Stat statExist = client.checkExists().forPath(nodePath2);
+        System.out.println(statExist == null ? nodePath2 + " 节点不存在" : nodePath2 + " 节点存在");
+ 
+        // 节点路径
+        String nodePath3 = "/t2";
+        Stat statExist2 = client.checkExists().forPath(nodePath3);
+        System.out.println(statExist2 == null ? nodePath3 + " 节点不存在" : nodePath3 + " 节点存在");
+ 
+        TimeUnit.SECONDS.sleep(1);
+        clientClose(client);
+    }
+ 
+    private static void t4() throws Exception {
+        CuratorFramework client = getClient();
+ 
+        String nodePath = "/testNode";          // 节点路径
+ 
+        Stat stat = new Stat();
+        byte[] bytes = client.getData()
+                .storingStatIn(stat)
+                .forPath(nodePath);
+ 
+        System.out.println("节点" + nodePath + " 的数据为：" + new String(bytes));
+        System.out.println("版本号为：" + stat.getVersion());
+ 
+        TimeUnit.SECONDS.sleep(1);
+ 
+        clientClose(client);
+    }
+ 
+    private static void t3() throws Exception {
+        CuratorFramework client = getClient();
+ 
+        String nodePath = "/testNode";          // 节点路径
+ 
+        // 删除节点
+        client.delete()
+                .guaranteed()   //如果删除失败，那么在后端还是会继续删除，直到成功
+                .deletingChildrenIfNeeded() // 子节点也会进行递归删除
+                .withVersion(1) // 指定数据版本
+                .forPath(nodePath);
+ 
+        TimeUnit.SECONDS.sleep(1);
+ 
+        clientClose(client);
+    }
+ 
+    private static void t2() throws Exception {
+        CuratorFramework client = getClient();
+ 
+        String nodePath = "/testNode";          // 节点路径
+        byte[] newData  = "modify data".getBytes();   // 修改数据
+ 
+        // 修改节点数据
+        Stat resultStat = client.setData().withVersion(0)         // 指定数据版本
+                .forPath(nodePath, newData);
+ 
+        System.out.println("更新节点数据成功，新的数据版本为：" + resultStat.getVersion());
+ 
+        TimeUnit.SECONDS.sleep(1);
+ 
+        clientClose(client);
+    }
+ 
+    private static void t1() throws Exception {
+        CuratorFramework client = getClient();
+ 
+        // 创建节点
+        String nodePath = "/testNode";          // 节点路径
+        byte[] data = "test data".getBytes();   // 节点数据
+        String result = client.create()
+                .creatingParentsIfNeeded()  // 创建父节点，也就是会递归创建
+                .withMode(CreateMode.PERSISTENT)  // 节点类型，持久型(临时节点的话，/testNode会删除，命名空间还在)
+                .withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)  // 节点的acl权限
+                .forPath(nodePath, data);
+ 
+        System.out.println(result + "节点，创建成功...");
+ 
+        Thread.sleep(1000);
+        clientClose(client);
+    }
+ 
+    private static CuratorFramework getClient() {
+        // 指数退避重试机制
+        ExponentialBackoffRetry retryPolicy = new ExponentialBackoffRetry(1000, 3,Integer.MAX_VALUE);
+ 
+        CuratorFramework client = CuratorFrameworkFactory.builder()
+                .connectString(connectionString)
+                .sessionTimeoutMs(10000)
+                .retryPolicy(retryPolicy)
+                .namespace("test")
+                .build();
+ 
+        client.start();
+        System.out.println("链接状态：" + client.getState());
+ 
+        return client;
+    }
+ 
+    private static void clientClose(CuratorFramework client) {
+        if (client != null){
+            client.close();
+            System.out.println("链接状态：" + client.getState());
+        }
+    }
+}
+```
+Curator测试watch(热加载配置文件)
+```java
+package tool;
+
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.api.CuratorWatcher;
+import org.apache.curator.framework.recipes.cache.*;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.retry.RetryOneTime;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+
+/**
+ <dependency>
+ <groupId>org.apache.curator</groupId>
+ <artifactId>curator-recipes</artifactId>
+ <version>4.2.0</version>
+ </dependency>
+
+ zk能够watch的有4个操作
+
+ stat path [watch]
+ ls path [watch]
+ ls2 path [watch]
+ get path [watch]
+ */
+public class Test {
+    // 伪分布式集群
+    public static final String connectionString = "192.168.75.133:2181,192.168.75.133:2182,192.168.75.133:2183";
+
+    public static void main(String[] args) throws Exception {
+//        t1();   // watcher
+//        t2();   // nodeCache一次注册N次监听
+//        t3();   // PathChildrenCache子节点监听
+        t4();   // 监听配置文件更新
+    }
+
+    private static void t4() throws Exception {
+        CountDownLatch countDown = new CountDownLatch(1);  // 计数器
+
+        RetryPolicy retryPolicy = new RetryOneTime(3000);
+        String connetStr = "192.168.75.133:2183";   // 监听2183端口
+        CuratorFramework client = CuratorFrameworkFactory.builder()
+                .connectString(connetStr)
+                .sessionTimeoutMs(10 * 1000)    // 默认是60 * 1000
+                .connectionTimeoutMs(10 * 1000) // 默认是15 * 1000
+                .retryPolicy(retryPolicy)
+                .namespace("test")
+                .build();
+        client.start();
+
+        PathChildrenCache pathChildrenCache = new PathChildrenCache(client, "/", true);
+        pathChildrenCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+
+        pathChildrenCache.getListenable().addListener((client1, event) -> {
+            switch (event.getType()){
+                // 监听配置文件的更新
+                case CHILD_UPDATED:
+                    // 只监听配置文件的节点
+                    String configNodePath = event.getData().getPath();
+                    System.out.println("节点数据更新，路径为:" + configNodePath);
+                    if (configNodePath.equals("/t2")) {
+                        System.out.println("该路径节点为配置文件节点");
+                        String data = new String(event.getData().getData());
+                        System.out.println("节点的数据为: " + data);
+                        // 获取到更新数据后，可以进行热加载配置文件
+                        countDown.countDown();
+                    }
+                    break;
+            }
+        });
+
+        // 倒计数，等待countDown.countDown()
+        countDown.await();
+        client.close();
+    }
+
+    /**
+     * 监听某一个节点的子节点的事件，或者监听某一个特定节点的增删改事件都需要借助PathChildrenCache来实现
+     */
+    private static void t3() throws Exception {
+        CuratorFramework client = getClient();
+        String nodePathDate = "/t2";          // 节点路径
+
+        // 初始化节点数据
+        byte[] init = "hi".getBytes();
+        client.setData()
+                .forPath(nodePathDate, init);
+
+        Thread.sleep(3000);
+
+        // 监听该路径为父路径
+        String nodePath = "/";          // 节点路径，监听的命名空间test下的节点
+
+        // 为子节点添加watcher
+        // PathChildrenCache: 监听数据节点的增删改，可以设置触发的事件
+        PathChildrenCache childrenCache = new PathChildrenCache(client, nodePath, true);
+
+        /**
+         * 可选参数StartMode: 初始化方式
+         * POST_INITIALIZED_EVENT：异步初始化，初始化之后会触发事件，会在初始化时触发子节点初始化以及添加子节点这两个事件
+         *                          因为缓存初始化时是把子节点添加到缓存里，所以会触发添加子节点事件，而添加完成之后，就会触发子节点初始化完成事件。
+         * NORMAL：异步初始化，无法获取子节点列表，并且也会触发添加子节点事件，但是不会触发子节点初始化完成事件
+         * BUILD_INITIAL_CACHE：同步初始化
+         */
+        childrenCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+//        childrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
+//        childrenCache.start(PathChildrenCache.StartMode.NORMAL);
+
+        // 列出子节点数据列表，需要使用BUILD_INITIAL_CACHE同步初始化模式才能获得，异步是获取不到的
+        List<ChildData> currentData = childrenCache.getCurrentData();
+        System.out.println("当前节点的子节点详细数据列表：");
+        for (ChildData currentDatum : currentData) {
+            System.out.println("\t* 子节点路径：" + new String(currentDatum.getPath()) + "，该节点的数据为：" + new String(currentDatum.getData()));
+        }
+
+        // 添加事件监听器
+        childrenCache.getListenable().addListener((client1, event) -> {
+            // 通过判断event type的方式来实现不同事件的触发
+            switch (event.getType()){
+                // 子节点初始化出发
+                case INITIALIZED :
+                    System.out.println("子节点初始化成功");
+                    break;
+                // 添加子节点时触发
+                case CHILD_ADDED :
+                    System.out.println("子节点：" + event.getData().getPath() + " 添加成功");
+                    break;
+                // 删除子节点时触发
+                case CHILD_REMOVED :
+                    System.out.println("子节点：" + event.getData().getPath() + " 删除成功");
+                    break;
+                // 修改子节点数据时触发
+                case CHILD_UPDATED :
+                    System.out.println("子节点：" + event.getData().getPath() + " 修改成功");
+                    break;
+            }
+        });
+
+        if(childrenCache.getCurrentData() != null) {
+            String nodePath_t2 = "/t2";          // 修改t2的数据
+
+            // 修改数据
+            byte[] bytes = "modify---1".getBytes();
+            byte[] bytes2 = "modify---2".getBytes();
+            client.setData()
+                    .forPath(nodePath_t2, bytes);
+
+            Thread.sleep(1000);
+            client.setData()
+                    .forPath(nodePath_t2, bytes2);
+        }
+
+        // 等待60秒操作时间
+        Thread.sleep(1000 * 60);
+        clientClose(client);
+    }
+
+    /**
+     * 只能监听该nodeChanged时间，node的创建、删除、以及子节点的时间都无法监听
+     * @throws Exception
+     */
+    private static void t2() throws Exception {
+
+        CuratorFramework client = getClient();
+        String nodePath = "/t2";          // 节点路径
+
+        // 初始化节点数据
+        byte[] init = "hi".getBytes();
+        client.setData()
+                .forPath(nodePath, init);
+
+        // NodeCache: 缓存节点，并且可以监听数据节点的变更，会触发事件
+        NodeCache nodeCache = new NodeCache(client, nodePath);
+
+        // 参数buildInitial: 初始化的时候获取node的值并且缓存，不设置则false
+        nodeCache.start(true);
+        System.out.println(nodeCache.getCurrentData() == null ? "节点初始化数据为空..." : "节点初始化数据为：" + new String(nodeCache.getCurrentData().getData()));
+
+        // 为缓存的节点添加watcher，或者说添加监听器
+        // 节点数据change事件的通知方法
+        nodeCache.getListenable().addListener(() -> {
+            // 防止节点被删除时发生错误
+            if (nodeCache.getCurrentData() == null) {
+                System.out.println("获取节点数据异常，无法获取当前缓存的节点数据，可能该节点已被删除");
+                return;
+            }
+
+            // 获取节点最新的数据
+            String data = new String(nodeCache.getCurrentData().getData());
+            System.out.println(nodeCache.getCurrentData().getPath() + " 节点的数据发生变化，最新的数据为：" + data);
+        });
+
+        if(nodeCache.getCurrentData() != null) {
+            // 修改数据
+            byte[] bytes = "modify1".getBytes();
+            byte[] bytes2 = "modify2".getBytes();
+            client.setData()
+                    .forPath(nodePath, bytes);
+
+            Thread.sleep(3000);
+            client.setData()
+                    .forPath(nodePath, bytes2);
+        }
+
+        Thread.sleep(3000);
+        clientClose(client);
+    }
+
+    /**
+     * 测试watch
+     * 一次性
+     * @throws Exception
+     */
+    private static void t1() throws Exception {
+        CuratorFramework client = getClient();
+        String nodePath = "/t2";          // 节点路径
+
+        // 添加 watcher 事件，当使用usingWatcher的时候，监听只会触发一次，监听完毕后就销毁
+        client.getData().usingWatcher(new MyWatcher()).forPath(nodePath);
+        client.getData().usingWatcher(new MyCuratorWatcher()).forPath(nodePath);
+
+        // 修改数据
+        byte[] bytes = "modify1".getBytes();
+        byte[] bytes2 = "modify2".getBytes();
+        client.setData()
+                .forPath(nodePath, bytes);
+
+        // 第二次修改(此时不会再监听)
+        client.setData()
+                .forPath(nodePath, bytes2);
+
+        Thread.sleep(1000);
+        clientClose(client);
+    }
+
+    private static CuratorFramework getClient() {
+        ExponentialBackoffRetry retryPolicy = new ExponentialBackoffRetry(1000, 3,Integer.MAX_VALUE);
+
+        CuratorFramework client = CuratorFrameworkFactory.builder()
+                .connectString(connectionString)
+                .sessionTimeoutMs(10000)
+                .retryPolicy(retryPolicy)
+                .namespace("test")
+                .build();
+
+        client.start();
+        System.out.println("链接状态：" + client.getState());
+
+        return client;
+    }
+
+    private static void clientClose(CuratorFramework client) {
+        if (client != null){
+            client.close();
+            System.out.println("链接状态：" + client.getState());
+        }
+    }
+
+    /**
+     * Watcher原生zkAPI，一次性
+     * 抽象方法，需要子类实现
+     */
+    static class MyWatcher implements Watcher{
+
+        // Watcher事件通知方法
+        @Override
+        public void process(WatchedEvent event) {
+            System.out.println("触发原生zkAPIwatcher，节点路径为：" + event.getPath());
+        }
+    }
+
+    /**
+     * Curator提供的CuratorWatcher接口实现，也是一次性的
+     * 需要子类实现
+     */
+    static class MyCuratorWatcher implements CuratorWatcher{
+
+        @Override
+        public void process(WatchedEvent event) throws Exception {
+            System.out.println("触发CuratorAPIwatcher，节点路径为：" + event.getPath());
+        }
+    }
+}
+```
+
+Curator进行acl权限操作
+```java
+package tool;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.ZooDefs;
+import org.apache.zookeeper.data.ACL;
+import org.apache.zookeeper.data.Id;
+import org.apache.zookeeper.server.auth.DigestAuthenticationProvider;
+
+import java.util.ArrayList;
+import java.util.List;
+
+
+public class Test {
+    // 伪分布式集群
+    public static final String connectionString = "192.168.75.133:2181,192.168.75.133:2182,192.168.75.133:2183";
+
+    public static void main(String[] args) throws Exception {
+        // 注意，需要在客户端链接的时候设置acl
+        // authorization("digest", "dx:123a".getBytes())
+//        t1(); // 添加权限
+        t2();   // 修改权限
+    }
+
+    private static void t2() throws Exception {
+        CuratorFramework client = getClient();
+        String nodePath = "/testNode";          // 节点路径
+
+        // 自定义权限列表
+        List<ACL> acls = new ArrayList<>();
+
+        Id user1 = new Id("world", "anyone");
+        acls.add(new ACL(ZooDefs.Perms.ALL, user1));    // 给user1 cdwra所有权限
+
+        client.setACL().withACL(acls).forPath(nodePath);
+
+        Thread.sleep(1000);
+        clientClose(client);
+    }
+
+    private static void t1() throws Exception {
+        CuratorFramework client = getClient();
+        String nodePath = "/testNode";          // 节点路径
+
+        // 自定义权限列表
+        List<ACL> acls = new ArrayList<>();
+
+        Id user1 = new Id("digest", DigestAuthenticationProvider.generateDigest("dx:123a"));
+        acls.add(new ACL(ZooDefs.Perms.ALL, user1));    // 给user1 cdwra所有权限
+
+        // 创建节点，使用自定义权限列表来设置节点的acl权限
+        // 如果想要在递归创建节点时，父节点和子节点的acl权限都是我们自定义的权限，那么就需要在withACL方法中，传递一个true
+        byte[] nodeData = "child-data".getBytes();
+        client.create()
+                .creatingParentsIfNeeded()
+                .withMode(CreateMode.PERSISTENT)
+                .withACL(acls, true)
+                .forPath(nodePath, nodeData);
+
+        Thread.sleep(1000);
+        clientClose(client);
+    }
+
+    private static CuratorFramework getClient() {
+        ExponentialBackoffRetry retryPolicy = new ExponentialBackoffRetry(1000, 3,Integer.MAX_VALUE);
+
+        CuratorFramework client = CuratorFrameworkFactory.builder()
+                .connectString(connectionString)
+                .authorization("digest", "dx:123a".getBytes())
+                .sessionTimeoutMs(10000)
+                .retryPolicy(retryPolicy)
+                .namespace("test")
+                .build();
+
+        client.start();
+        System.out.println("链接状态：" + client.getState());
+
+        return client;
+    }
+
+    private static void clientClose(CuratorFramework client) {
+        if (client != null){
+            client.close();
+            System.out.println("链接状态：" + client.getState());
+        }
+    }
+}
+```
+
+zk分布式锁
+
+<a name="related-redis"></a>
+### 6、redis
+
+[免安装使用](http://try.redis.io/)
+ 
+安装redis[中文官网](http://redis.cn)
+- docker方式
+```text
+拉取redis镜像
+>docker pull redis
+ 
+运行redis容器，将容器的6379端口映射到主机6379端口
+>docker run --name myredis -d -p 6379:6379 redis
+ 
+执行容器中的redis-cli，可以直接使用命令行操作redis
+>docker exec -it myredis redis-cli
+```
+
+- git方式
+```text
+> git clone --branch 3.2 --depth 1 git@github.com:antirez/redis.git
+cd redis
+ 
+编译
+> make 
+> cd src
+ 
+运行服务器，daemonize表示在后台运行
+>./redis-server --daemonize yes
+ 
+运行命令行
+>./redis-cli   
+```
+
+- 直接安装
+```text
+linux
+$ wget http://download.redis.io/releases/redis-3.2.0tar.gz
+$ tar xvzf redis-2.8.17.tar.gz
+$ cd redis-2.8.17
+$ make
+
+make完后 redis-2.8.17目录下会出现编译后的redis服务程序redis-server,还有用于测试的客户端程序redis-cli,两个程序位于安装目录 src 目录下：
+ 
+下面启动redis服务.
+ 
+$ cd src
+$ ./redis-server
+注意这种方式启动redis 使用的是默认配置。也可以通过启动参数告诉redis使用指定配置文件使用下面命令启动。
+ 
+$ cd src
+$ ./redis-server ../redis.conf
+redis.conf 是一个默认的配置文件。我们可以根据需要使用自己的配置文件。
+ 
+启动redis服务进程后，就可以使用测试客户端程序redis-cli和redis服务交互了。 比如：
+ 
+$ cd src
+$ ./redis-cli
+redis> set foo bar
+OK
+redis> get foo
+"bar"
+```
+五种对象类型
+- string（字符串）
+- list（双端列表）
+- set（集合）
+- hash（哈希）
+- sorted set（有序集合）
+
