@@ -1846,3 +1846,45 @@ redis> get foo
 - hash（哈希）
 - sorted set（有序集合）
 
+几种类型对应的字符编码
+```text
+RedisObject
+ 
+typedef struct redisObject {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:REDIS_LRU_BITS; /* lru time (relative to server.lruclock) */
+    int refcount;
+    void *ptr;
+} robj;
+4位的type表示具体的数据类型。Redis中共有5中数据类型。2^4 = 8足以表示这些类型。
+4位的encoding表示该类型的物理编码方式，同一种数据类型可能有不同的编码方式。目前Redis中主要有8种编码方式：
+lru字段表示当内存超限时采用LRU算法清除内存中的对象。 
+refcount表示对象的引用计数。 
+ptr指针指向真正的存储结构。
+ 
+#define REDIS_ENCODING_RAW 0     /* Raw representation */
+#define REDIS_ENCODING_INT 1     /* Encoded as integer */
+#define REDIS_ENCODING_HT 2      /* Encoded as hash table */
+#define REDIS_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
+#define REDIS_ENCODING_LINKEDLIST 4 /* Encoded as regular linked list */
+#define REDIS_ENCODING_ZIPLIST 5 /* Encoded as ziplist */
+#define REDIS_ENCODING_INTSET 6  /* Encoded as intset */
+#define REDIS_ENCODING_SKIPLIST 7  /* Encoded as skiplist */ 
+ 
+一共16个字节、128比特、128位 
+type(4bit、4个比特、4位) + encoding(4bit、4个比特、4位) +  LRU(24bit、24个比特、24位) + refcount(4bytes、32个比特、32位) + ptr(8bytes、64个比特、64位)
+  
+查看引用次数命令
+object refcount key
+查看编码命令
+object encoding key  
+```
+ 
+类型|一般情况|少量数据|特殊情况
+----|:----:|:----:|----
+String|raw|embstr|s
+List|quicklist(>=3.2.0版本),Linkedlist(<3.2.0版本)|ziplist|
+Set|ht||intset
+hash|ht|ziplist|
+sorted set|skiplist|ziplist|
