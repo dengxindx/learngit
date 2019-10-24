@@ -1883,8 +1883,780 @@ object encoding key
  
 类型|一般情况|少量数据|特殊情况
 ----|:----:|:----:|----
-String|raw|embstr|s
-List|quicklist(>=3.2.0版本),Linkedlist(<3.2.0版本)|ziplist|
+String|raw|embstr|int
+List|quicklist(>=3.2.0版本,只有),Linkedlist(<3.2.0版本)|ziplist|
 Set|ht||intset
 hash|ht|ziplist|
 sorted set|skiplist|ziplist|
+ 
+Redis的embstr编码方式和raw编码方式在3.0版本之前是以39字节为分界的，也就是说，
+如果一个字符串值的长度小于等于39字节，则按照embstr进行编码，否则按照raw进行编码。 
+而在3.2版本之后，则变成了44字节为分界。
+```text
+why?
+embstr：redisobject和sds是连续分配空间，只分配一次。
+Redis 默认的内存分配器jemalloc分配内存大小的单位是$2^n$次方,为了容纳一个完整的embstr
+对象,最少会分配 32 字节的空间,再长些就是 64 字节,再之后就认为这是一个大字符串不适合用 
+embstr 存储,而改用 raw 编码了.
+redis在创建对象的时候先分配内
+存空间，一个redisobject16个字节，String的sds结构有
+len、alloc、flags，各占一个字节，所有就有19个字节，然后C语言数组末尾以\0结尾，占一个
+字节，就有20个字节，内存分配以sdshdr5，sdshdr8，sdshdr16，sdshdr32，sdshdr64分配，此
+时应该分配32个字节，buf会预分配16个字节空间，所以应分配64个字节，减去之前的20个字节，
+剩下44个字节可以存储数据
+```
+
+set
+```text
+可去重，下面是两种编码格式
+typedef struct intset {
+    // 每个整数的类型 int16、int32、int64
+    uint32_t encoding;
+    // 数组长度
+    uint32_t length;
+    // 存储数组
+    int8_t contents[];
+} intset;
+ 
+当数组内插入的整数型长度变化，数组其他位置的编码类型也会变化成最长的同类型
+字符串长度为最大长度 512MB.
+ 
+当插入字符串或者键值对数量超过512个（通过配置文件中的set-max-inset-entries属性改变默认值）自动转行成ht
+```
+
+Stirng
+```text
+struct sds{
+    // buf中已占用空间的长度
+    unsigned int len;
+    // 内存大小
+    unsigned int alloc;
+    // 特殊标识位
+    unsigned char flags;
+    // 初始化sds分配的数据空间
+    char buf[];
+}
+字符串在长度小于1M之前，扩容空间采用加倍策略，超过1M之后，为了避免加倍后冗余空间过大
+，每次扩容只会多分配1M空间
+ 
+长度小于44的浮点型编码为embstr，可用incrbyfloat key 命令进行加1操作
+```
+
+list
+```text
+3.2之后为quicklist编码，quicklist为多个ziplist组成的双端链表
+ziplist：
+zlbytes-zltail-zllen-xxxxxxxxxxxxx-zlend
+列表占内存总字节数-表尾节点距其实地址的字节-节点数量-entry节点对象内容-标记列表的结尾0Xff
+ 
+list-max-ziplist-size -2
+参数的含义解释，取正值时表示quicklist节点ziplist包含的数据项。取负值表示按照占用字节来限定quicklist节点ziplist的长度。
+-5: 每个quicklist节点上的ziplist大小不能超过64 Kb。
+-4: 每个quicklist节点上的ziplist大小不能超过32 Kb。
+-3: 每个quicklist节点上的ziplist大小不能超过16 Kb。
+-2: 每个quicklist节点上的ziplist大小不能超过8 Kb。（默认值）
+-1: 每个quicklist节点上的ziplist大小不能超过4 Kb。
+list设计最容易被访问的是列表两端的数据，中间的访问频率很低，如果符合这个场景，list还有一个配置，可以对中间节点进行压缩（采用的LZF——一种无损压缩算法）
+，进一步节省内存。配置如下
+ 
+list-compress-depth 0 
+含义：
+0: 是个特殊值，表示都不压缩。这是Redis的默认值。
+1: 表示quicklist两端各有1个节点不压缩，中间的节点压缩。
+2: 表示quicklist两端各有2个节点不压缩，中间的节点压缩。
+以此类推
+```
+
+hash
+```text
+//hash节点
+//字典，管理两个dicht，为什么需要定义两个，为了在扩容的时候使用。
+typedef struct dict {//管理两个dictht，主要用于动态扩容。
+    dictType *type;//函数管理，类型特定函数
+    void *privdata;//私有数据
+    dictht ht[2];//哈希表(一个使用，一个扩容用)
+    long rehashidx; /* 扩容标志rehashing not in progress if rehashidx == -1 当rehash不在进行时-1*/
+    unsigned long iterators; /* number of iterators currently running目前正在运行的安全迭代器数量 */
+} dict;
+ 
+/* This is our hash table structure. Every dictionary has two of this as we
+ * implement incremental rehashing, for the old to the new table. */
+//定义一个hash桶，用来管理hashtable
+typedef struct dictht {//管理hashtable
+    dictEntry **table;//指针数组，这个hash的桶
+    unsigned long size;//元素个数
+    unsigned long sizemask;//哈希表大小掩码，用于计算索引值，总是等于size-1
+    unsigned long used;//该哈希表已有的节点数量
+} dictht;
+  
+typedef struct dictEntry {//hash节点
+    void *key;//键，一半是sds
+    //值
+    union {//联合体牛逼，导致值可以多用途，可以存储指针或存储整数或浮点数。必定可以存储上面类型之前，通过不同的引用，告诉编译器如何解释对应的内存块。
+        void *val;
+        uint64_t u64;
+        int64_t s64;
+        double d;
+    } v;
+    struct dictEntry *next;//下一个节点，解决碰撞冲突，形成链表
+} dictEntry;
+ 
+//定义hash需要使用的函数
+typedef struct dictType {//定义函数指针，例如使用的hash函数
+    uint64_t (*hashFunction)(const void *key);
+    void *(*keyDup)(void *privdata, const void *key);
+    void *(*valDup)(void *privdata, const void *obj);
+    int (*keyCompare)(void *privdata, const void *key1, const void *key2);
+    void (*keyDestructor)(void *privdata, void *key);
+    void (*valDestructor)(void *privdata, void *obj);
+} dictType;//定义对应的函数指针，例如定义hash函数
+  
+/* If safe is set to 1 this is a safe iterator, that means, you can call
+ * dictAdd, dictFind, and other functions against the dictionary even while
+ * iterating. Otherwise it is a non safe iterator, and only dictNext()
+ * should be called while iterating. */
+typedef struct dictIterator {//简单的迭代器封装，STL内部也是这么实现
+    dict *d;//字典
+    long index;//索引
+    int table, safe;
+    dictEntry *entry, *nextEntry;//当前元素，下一个元素
+    /* unsafe iterator fingerprint for misuse detection. */
+    long long fingerprint;
+} dictIterator;
+ 
+编码转换：（不可以转换）
+当哈希对象同时满足以下两个条件时，哈希对象使用ziplist编码
+①哈希对象保存的所有键值元素的长度都小于64字节，可通过修改配置文件中的hash-max-ziplist-value
+属性改变默认值
+②哈希对象保存的键值对数量小于512个，可通过修改配置文件中的hash-max-ziplist-entries属性改变默认值
+ 
+hashtable采用渐进式rehash(2的指数扩容)，负载因子=已使用节点数量/哈希表大小，在两种情况下对哈希表进行扩展
+①当服务器未执行BGSAVE或BGRWRITEAOP，并且负载因子>1
+②当服务器执行BGSAVE或BGRWRITEAOP，并且负载因子>5
+当负载因子<0.1对哈希表进行收缩
+```
+sortedset
+```text
+有序集合对象编码为ziplist或者skiplist
+ziplist编码：(分值小到大)
+zlbytes-zltail-zllen-成员-分值-成员-分值-zlend
+ 
+skiplist编码：
+哈希表+跨越表  
+ 
+redis里面最多32个层级
+ 
+编码转换：
+当有序集合对象同时满足以下两个条件时，有序集合对象使用ziplist编码：
+①有序集合对象保存的所有成员长度小于64字节，可通过修改配置文件中的zset-max-ziplist-value属性改变默认值
+②有序集合对象保存的所有元素数量小于128个，可通过修改配置文件中的zset-max-ziplist-entries属性改变默认值
+```
+
+redis持久化
+- RDB持久化
+- AOF持久化
+ 
+持久化自动加载rdb文件，开启了aof，则加载aof文件否则加载rdb文件 
+ 
+redis可以做内存数据库，默认有16个数据库（redis是单进程的）
+```text
+RDB
+生成经过压缩的二进制RDB文件，通过save和bgsave命令生成，通过快照保存在硬盘上
+save：
+    阻塞式保存数据，执行save命令会调用rdbsave
+     
+bgsave：
+    fork出一个子进程，子进程负责调用rdbsave，保存完成后通知主进程。bgsave非阻塞
+    执行期间，客户端发送save命令会被拒绝，防止竞争条件。两个bgsave不能同时执行 
+         
+save命令执行rdb.c/rdbSave函数，bgsave命令执行rdb.c/rdbSaveBackgroud函数
+
+修改当前进程配置文件：
+config set save "20 1"
+ 
+conf配置文件：
+################################ SNAPSHOTTING  ################################
+# 快照
+# Save the DB on disk:
+#
+#   save <seconds> <changes>
+#
+#   Will save the DB if both the given number of seconds and the given
+#   number of write operations against the DB occurred.
+#
+#   In the example below the behaviour will be to save:
+#   after 900 sec (15 min) if at least 1 key changed
+#   after 300 sec (5 min) if at least 10 keys changed
+#   after 60 sec if at least 10000 keys changed
+#
+#   Note: you can disable saving completely by commenting out all "save" lines.
+#
+#   It is also possible to remove all the previously configured save
+#   points by adding a save directive with a single empty string argument
+#   like in the following example:
+#
+#   save ""
+# save <seconds> <changes> 文件保存条件，满足其中任何一个就会自动触发
+ 
+save 900 1
+save 300 10
+save 60 10000
+ 
+# rdb文件名 
+dbfilename dump.rdb
+ 
+# rdb文件存放路径 
+dir ./
+ 
+# 是否在导出.rdb数据库文件的时候采用LZF压缩 
+rdbcompression yes 
+ 
+# 是否开启CRC64校验
+rdbchecksum yes
+ 
+# 设置在保存快照出错时，是否停止redis命令的写入，默认开启
+# fork子进程内存不足，或者rdb文件目录写入无权限会失败
+stop-writes-on-bgsave-error yes  
+   
+# By default Redis will stop accepting writes if RDB snapshots are enabled   
+ 
+四种持久化文件触发方式：
+①使用save相关配置
+②从节点执行全量复制操作
+③debug reload命令
+④shutdown命令，如果没有开启aof自动执行bgsave
+ 
+查看持久化信息：
+>info persistence
+ 
+       
+```
+
+rdb文件结构
+ 
+redis-db版本号-服务器版本-系统位数-rdb创建时间-可用内存-db0-过期时间-type-key-value-...-db1...-eof-checknum
+元数据：服务器版本-系统位数-rdb创建时间-可用内存
+数据库键值对db0-过期时间-type-key-value-...-db1...
+ 
+AOF持久化
+```text
+通过保存redis服务器所执行的写命令来记录数据库状态，也就是每当redis执行一个改变数据集的命令时比如set，
+这个命令就会被追加到AOF文件的末尾
+ 
+开启AOF：
+修改conf配置文件，默认是appendonly no(关闭) 
+appendonly yes
+ 
+执行流程：
+命令追加：将redis写命令追加到缓冲区aof_buf
+文件写入write和文件同步sync：根据不同的同步策略将aof_buf中的内容同步到硬盘
+文件重写：定期重写aof文件，达到压缩目的
+文件载入：用于服务器重启时的数据恢复 
+ 
+############################## APPEND ONLY MODE ###############################
+ 
+# By default Redis asynchronously dumps the dataset on disk. This mode is
+# good enough in many applications, but an issue with the Redis process or
+# a power outage may result into a few minutes of writes lost (depending on
+# the configured save points).
+#
+# The Append Only File is an alternative persistence mode that provides
+# much better durability. For instance using the default data fsync policy
+# (see later in the config file) Redis can lose just one second of writes in a
+# dramatic event like a server power outage, or a single write if something
+# wrong with the Redis process itself happens, but the operating system is
+# still running correctly.
+#
+# AOF and RDB persistence can be enabled at the same time without problems.
+# If the AOF is enabled on startup Redis will load the AOF, that is the file
+# with the better durability guarantees.
+#
+# Please check http://redis.io/topics/persistence for more information.
+ 
+# 是否开启aof 
+appendonly no
+ 
+# aof文件名称 
+appendfilename "appendonly.aof"
+  
+# 写入aof文件的三种方式
+# appendfsync always
+appendfsync everysec
+# 将缓冲区数据写入到aof文件，但是同步操作需要操作系统处理
+# appendfsync no    
+ 
+# 重写aof时，是否继续写aof文件 
+no-appendfsync-on-rewrite no
+ 
+# 自动重写aof文件的条件
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+ 
+# 是否忽略最后一条可能存在问题的指令 
+aof-load-truncated yes 
+ 
+文件重写能够压缩aof：
+过期数据不再写入
+无效命令不再写入，比如先set后delete了，重复设值
+多条命令可以合并，比如sadd多个数据，合并的命令会有个常亮界限server.h/AOF_REWRITE_ITEMS_PER_CM中定义，不可更改，值为64
+```
+
+aofredis协议格式RESP
+```text
+Redis客户端与Redis服务端基于一个称作RESP的协议进行通信，RESP全称为Redis Serialization Protocol，也就是Redis序列化协议。虽然RESP为Redis设计，但是它也可以应用在其他客户端-服务端（Client-Server）的软件项目中。
+协议的不同部分始终以\r\n（CRLF）终止。
+单行字符串的第一个字节为+。
+错误消息的第一个字节为-。
+整型数字的第一个字节为:。
+定长字符串的第一个字节为$。
+RESP数组的第一个字节为*。
+ 
+重写触发机制：
+手动触发
+执行bgrewriteaof命令直接触发AOF重写
+ 
+自动触发
+在redis.config配置文件中有两个配置项
+ 
+auto-aof-rewrite-min-size 64MB
+auto-aof-rewrite-min-percenrage 100
+ 
+上面两个配置表示： 
+- 当AOF文件小于64MB的时候不进行AOF重写 
+- 当当前AOF文件比上次AOF重写后的文件大100%的时候进行AOF重写
+ 
+上面两个条件同时满足才触发重写 
+可以在redis.conf配置文件中添加这两个参数来自动触发AOF重写，执行bgrewriteaof命令
+```
+
+主从复制
+```text
+主从复制，是指将一台Redis服务器的数据，复制到其他的Redis服务器。前者称为主节点(master)，后者称为从节点(slave)；数据的复制是单向的，只能由主节点到从节点。
+默认情况下，每台Redis服务器都是主节点；且一个主节点可以有多个从节点(或没有从节点)，但一个从节点只能有一个主节点。
+ 
+# 从节点设置为只读模式，只能读取数据，如果未no则写入的数据不会被同步到其他节点 
+slave-read-only yes
+ 
+# 数据传输延迟，控制是否关闭TCP_NODELAY。默认关闭 
+# 当设置为yes时，TCP会对包进行合并从而减少带宽，但是发送的频率会降低，从节点数据延迟增加，一致性变差；具体发送频率与Linux内核的配置有关，默认配置为40ms。当设置为no时，TCP会立马将主节点的数据发送给从节点，带宽增加但延迟变小。
+# 一般来说，只有当应用对Redis数据不一致的容忍度较高，且主从节点之间网络状况不好时，才会设置为yes；多数情况使用默认值no。
+repl-disable-tcp-nodelay no 
+  
+```
+
+三种结构
+- 一主一从
+- 一主多从（星形拓扑结构）
+- 树状主从结构
+
+主从复制的作用
+- 数据冗余：主从复制实现了数据的热备份，是持久化之外的一种数据冗余方式。
+- 故障恢复：当主节点出现问题时，可以由从节点提供服务，实现快速的故障恢复；实际上是一种服务的冗余。
+- 负载均衡：在主从复制的基础上，配合读写分离，可以由主节点提供写服务，由从节点提供读服务（即写Redis数据时应用连接主节点，读Redis数据时应用连接从节点），分担服务器负载；尤其是在写少读多的场景下，通过多个从节点分担读负载，可以大大提高Redis服务器的并发量。
+- 高可用基石：除了上述作用以外，主从复制还是哨兵和集群能够实施的基础，因此说主从复制是Redis高可用的基础。
+
+主从复制开启和关闭
+*主从复制的开启，完全是在从节点发起的；不需要我们在主节点做任何事情。*
+三种方式
+- 配置文件：在从服务器的配置文件中加入：slaveof <masterip> <masterport>
+- 启动命令：redis-server启动命令后加入 --slaveof <masterip> <masterport>
+- 客户端命令：Redis服务器启动后，直接通过客户端执行命令：slaveof <masterip> <masterport>，则该Redis实例成为从节点。
+
+关闭复制：在从服务器输入：slaveof no one
+ 
+redis密码设置
+```text
+①配置文件配置，永久有效# requirepass test123
+②命令行位置，重启失效redis 127.0.0.1:6379> config set requirepass test123
+ 
+密码验证redis 127.0.0.1:6379>auth  test123
+从服务器密码校验redis 127.0.0.1:6380>config set masterauth test123
+```
+ 
+ 全量复制
+ ```text
+Redis通过psync命令进行全量复制的过程如下：
+psync ? -1 
+  
+（1）从节点判断无法进行部分复制，向主节点发送全量复制的请求；或从节点发送部分复制的请求，但主节点判断无法进行全量复制；具体判断过程需要在讲述了部分复制原理后再介绍。
+  
+（2）主节点收到全量复制的命令后，执行bgsave，在后台生成RDB文件，并使用一个缓冲区（称为复制缓冲区）记录从现在开始执行的所有写命令
+  
+（3）主节点的bgsave执行完成后，将RDB文件发送给从节点；从节点首先清除自己的旧数据，然后载入接收的RDB文件，将数据库状态更新至主节点执行bgsave时的数据库状态
+  
+（4）主节点将前述复制缓冲区中的所有写命令发送给从节点，从节点执行这些写命令，将数据库状态更新至主节点的最新状态
+  
+（5）如果从节点开启了AOF，则会触发bgrewriteaof的执行，从而保证AOF文件更新至主节点的最新状态
+```
+
+部分复制(2.8提供)
+```text
+psync <runid> <offset>
+（1）复制偏移量
+主节点和从节点分别维护一个复制偏移量（offset），代表的是主节点向从节点传递的字节数；主节点每次向从节点传播N个字节数据时，主节点的offset增加N；从节点每次收到主节点传来的N个字节数据时，从节点的offset增加N。
+ 
+offset用于判断主从节点的数据库状态是否一致：如果二者offset相同，则一致；如果offset不同，则不一致，此时可以根据两个offset找出从节点缺少的那部分数据。例如，如果主节点的offset是1000，而从节点的offset是500，那么部分复制就需要将offset为501-1000的数据传递给从节点。而offset为501-1000的数据存储的位置，就是下面要介绍的复制积压缓冲区。
+
+（2）复制积压缓冲区
+复制积压缓冲区是由主节点维护的、固定长度的、先进先出(FIFO)队列，默认大小1MB；当主节点开始有从节点时创建，其作用是备份主节点最近发送给从节点的数据。注意，无论主节点有一个还是多个从节点，都只需要一个复制积压缓冲区。
+如果offset偏移量之后的数据，仍然都在复制积压缓冲区里，则执行部分复制；
+如果offset偏移量之后的数据已不在复制积压缓冲区中（数据已被挤出），则执行全量复制。
+可以根据需要增大复制积压缓冲区的大小(通过配置repl-backlog-size)；例如如果网络中断的平均时间是60s，而主节点平均每秒产生的写命令(特定协议格式)所占的字节数为100KB，则复制积压缓冲区的平均需求为6MB，保险起见，可以设置为12MB，来保证绝大多数断线情况都可以使用部分复制。
+ 
+（3）服务器运行ID(runid)
+ 每个Redis节点(无论主从)，在启动时都会自动生成一个随机ID(每次启动都不一样)，由40个随机的十六进制字符组成；runid用来唯一识别一个Redis节点。通过info Server命令，可以查看节点的runid
+ 主从节点初次复制时，主节点将自己的runid发送给从节点，从节点将这个runid保存起来；当断线重连时，从节点会将这个runid发送给主节点；主节点根据runid判断能否进行部分复制：
+  
+ 如果从节点保存的runid与主节点现在的runid相同，说明主从节点之前同步过，主节点会继续尝试使用部分复制(到底能不能部分复制还要看offset和复制积压缓冲区的情况)；
+ 如果从节点保存的runid与主节点现在的runid不同，说明从节点在断线前同步的Redis节点并不是当前的主节点，只能进行全量复制。 
+```
+
+*如果原来的master挂了，又重启的runid会改变，可以使用debug reload热加载重启，runid就不会变*
+
+复制配置
+```text
+#复制的超时时间配置文件设置，超过这个时间没有将rdb传输到从服务器，则全量复制失败
+# repl-timeout 60
+ 
+#redis支持无盘复制，生成rdb文件不保存到硬盘而是直接发送到从节点，默认关闭
+repl-diskless-sync no
+  
+#client buffer是在server端实现的一个读取缓冲区，redis server在接收到客户端的请求后，把响应结果写入到
+#client buffer中，而不是直接发送给客户端  
+
+client-output-buffer-limit normal 0 0 0
+ 
+#与全量复制阶段主节点的缓冲区大小有关 
+#(发送命令缓冲区)表示从库的复制客户端如果60秒内缓冲区小号持续大于64M或者直接超过256M，主节点将直接关闭复制客户端连接 
+client-output-buffer-limit slave 256mb 64mb 60
+ 
+#  
+client-output-buffer-limit pubsub 32mb 8mb 60 
+```
+命令传播阶段
+```text
+# 与命令传播阶段主从节点的超时判断有关，主节点每隔10秒ping一次从节点，判断从节点的存活状态
+# repl-ping-slave-period 10
+ 
+# 从节点在主线程中每隔1秒发送replconf ack{offset}命令，给主节点上报自身当前复制偏移量
+replconf命令主要作用：
+①实时监测主节点网络状态
+②上报自身复制偏移量，检查复制数据是否丢失，如果从节点数据丢失，再从主节点的复制缓冲积压区拉取丢失数据
+③实现保证从节点的数量和延迟性功能，通过min-slaves-to-write、minslaves-max-lag参数配置定义 
+# min-slaves-to-write 3
+# min-slaves-max-lag 10
+  
+辅助保证从节点的数量和延迟：Redis主节点中使用min-slaves-to-write和min-slaves-max-lag参数，来保证主节点在不安全的情况下不会执行写命令
+；所谓不安全，是指从节点数量太少，或延迟过高。例如min-slaves-to-write和min-slaves-max-lag分别是3和10，含义是如果从节点数量小于3个，
+或所有从节点的延迟值都大于10s，则主节点拒绝执行写命令。而这里从节点延迟值的获取，就是通过主节点接收到REPLCONF ACK命令的时间来判断的，即前面所说的info Replication中的lag值。
+```
+ 
+应用中的问题
+```text
+1. 读写分离及其中的问题
+一、数据延迟与不一致
+①主从节点在同一机房部署
+②监控主节点延迟（通过offset）判断，如果从节点延迟过大，通知应用不再通过该节点读取数据
+③Redis复制提供了slave-serve-stale-data参数，默认开启，如果开启则从节点依然响应所有命令
+对于无法容忍不一致的应用场景，可以设置no来关闭命令执行，此时从节点除了info和slaveof命令
+之外所有的命令只返回“SYNC with master in progress”信息
+slave-serve-stale-data yes 
+ 
+二、数据过期问题
+在单机版Redis中，存在两种删除策略：
+ 
+惰性删除：服务器不会主动删除数据，只有当客户端查询某个数据时，服务器判断该数据是否过期，如果过期则删除。
+定期删除：服务器执行定时任务删除过期数据，但是考虑到内存和CPU的折中（删除会释放内存，但是频繁的删除操作对CPU不友好），该删除的频率和执行时间都受到了限制。
+在主从复制场景下，为了主从节点的数据一致性，从节点不会主动删除数据，而是由主节点控制从节点中过期数据的删除。由于主节点的惰性删除和定期删除策略，都不能保证主节点及时对过期数据执行删除操作，因此，当客户端通过Redis从节点读取数据时，很容易读取到已经过期的数据。
+ 
+Redis 3.2中，从节点在读取数据时，增加了对数据是否过期的判断：如果该数据已过期，则不返回给客户端；将Redis升级到3.2可以解决数据过期问题。
+ 
+三、故障切换问题
+在没有使用哨兵的读写分离场景下，应用针对读和写分别连接不同的Redis节点；当主节点或从节点出现问题而发生更改时，需要及时修改应用程序读写Redis数据的连接；连接的切换可以手动进行，或者自己写监控程序进行切换，但前者响应慢、容易出错，后者实现复杂，成本都不算低。
+  
+总结
+在使用读写分离之前，可以考虑其他方法增加Redis的读负载能力：如尽量优化主节点（减少慢查询、减少持久化等其他情况带来的阻塞等）提高负载能力；使用Redis集群同时提高读负载能力和写负载能力等。如果使用读写分离，可以使用哨兵(也可采用redis cluster)，使主从节点的故障切换尽可能自动化，并减少对应用程序的侵入。  
+2. 复制超时问题  
+ 
+主从节点复制超时是导致复制中断的最重要的原因之一
+（1）数据同步阶段：在主从节点进行全量复制bgsave时，主节点需要首先fork子进程将当前数据保存到RDB文件中，然后再将RDB文件通过网络传输到从节点。如果RDB文件过大，主节点在fork子进程+保存RDB文件时耗时过多，可能会导致从节点长时间收不到数据而触发超时；此时从节点会重连主节点，然后再次全量复制，再次超时，再次重连……这是个悲伤的循环。为了避免这种情况的发生，除了注意Redis单机数据量不要过大，另一方面就是适当增大repl-timeout值，具体的大小可以根据bgsave耗时来调整。
+ 
+（2）命令传播阶段：如前所述，在该阶段主节点会向从节点发送PING命令，频率由repl-ping-slave-period控制；该参数应明显小于repl-timeout值(后者至少是前者的几倍)。否则，如果两个参数相等或接近，网络抖动导致个别PING命令丢失，此时恰巧主节点也没有向从节点发送数据，则从节点很容易判断超时。
+ 
+（3）慢查询导致的阻塞：如果主节点或从节点执行了一些慢查询（如keys *或者对大数据的hgetall等），导致服务器阻塞；阻塞期间无法响应复制连接中对方节点的请求，可能导致复制超时。
+ 
+3. 复制中断问题
+复制缓冲区溢出
+复制缓冲区的大小由client-output-buffer-limit slave {hard limit} {soft limit} {soft seconds}配置，默认值为client-output-buffer-limit slave 256MB 64MB 60，其含义是：如果buffer大于256MB，或者连续60s大于64MB，则主节点会断开与该从节点的连接。该参数是可以通过config set命令动态配置的（即不重启Redis也可以生效）。
+ 
+需要注意的是，复制缓冲区是客户端输出缓冲区的一种，主节点会为每一个从节点分别分配复制缓冲区；而复制积压缓冲区则是一个主节点只有一个，无论它有多少个从节点。
+``` 
+ 
+慢查询日志
+```text
+慢查询分析，通过慢查询分析，找到有问题的命令进行优化
+redis客户端执行一条命令,分为4部分
+1> 发送命令
+2>命令排队
+3>命令执行
+4>返回结果
+慢查询在第三步,统计第三步执行时间
+ 
+slow log 是redis用来记录查询执行时间的日志系统
+ 
+查询执行时间指的是不包括像客户端相应,发送回复等io操作.单单执行一个查询命令所耗费的时间
+slow log 保存在内存中,读写速度快.不用担心因为开启slow log而损害redis速度
+配置上, 修改redis.conf,当然也可以直接set,但是那样重启之后就没了, 主要两个参数
+slowlog-log-slower-than 10000: 执行时间大于多少微秒的查询进行记录.(1s=1000000微秒), 如果值设为0,就是所有的访问记录都会被记录下来.小于0则表示不记录
+slowlog-max-len 128:最多能保存多少条日志,slow log本身是一个FIFO队列,当队列大小超过这个值,最旧的一条日志就被删除了.(需要我们自己去slow get慢查询日志进行持久化)
+ 
+每条慢查询日志的4个属性：
+标识id、发生时间戳、命令耗时、执行命令和参数
+ 
+慢查询相关命令：
+slowlog get [n]，获取慢查询日志列表，可指定返回条数
+slowlog len， 获取慢查询日志列表当前长度
+slowlog reset， 清空慢查询日志 
+``` 
+
+redis-shell
+```text
+redis-server        启动redis服务
+redis-cli           redis客户端命令行工具
+redis-benchmark     基准测试工具
+redis-check-aof     AOF持久化文件检测工具和修复工具
+redis-check-dump    RDB持久化文件检测工具和修复工具
+redis-sentinel      启动redis-sentinel
+--help查看具体命令 
+```
+
+Pipleline
+```text
+RTT（Round-Trip-Time）,往返时间，Pipleline将一组reids命令组装通过一次RTT
+原生批量命令是原子性的，Pipeline是非原子的。
+原生批量命令是一个命令对应多个key，Pipeline支持多个命令
+原生批量命令是Redis服务端支持实现的，而Pipeline需要服务端和客户端共同实现
+Pipeline不要组装过多命令，可能产生网络阻塞
+原生批量命令：
+mget
+mset
+hmget
+hmset...
+```
+
+事务
+```text
+Redis事务三个阶段：
+1、事务开始
+MULTI命令
+2、命令入队
+exec（执行）、
+discard（放弃）、
+watch（监视一个(或多个) key ，如果在事务执行之前这个(或这些) key 被其他命令所改动，那么事务将被打断。）、
+multi（标记一个事务块的开始）四个命令立即执行
+不是这4个命令，服务器将命令放入FIFO事务队列，然后向客户端返回queued
+3、事务执行
+ 
+事务中的错误 
+1、入队错误
+命令输入错误。。。这种错误可以在命令入队的时候检测出来，事务会discard
+2、执行错误
+执行命令的时候出错。。。比如操作一个事务开启前存在一个list的key，事务执行时候把这个key当成set类型操作，检测不到，
+执行时候会报错，不会中断事务，而是继续执行其他的命令，不受出错命令影响
+ 
+redis事务是原子性的，不支持事务回滚 
+ 
+Watch命令：
+乐观锁，在exec命令执行前，监视任意适量的数据库key，并在exec命令执行时，检查被监视的key是否至少有一个已经被修改过，
+如果是，服务器将拒绝执行事务，并像客户端返回代表事务执行失败的空回复(nil)
+```
+ 
+bitmaps
+```text
+redis提供setbit、getbit、bitcount、bitop、bitpos五个命令处理二进制数组位
+1.Bitmaps是一种特殊的“数据结构”，实质上是一个字符串，操作单元是位。
+ 
+2.命令：
+a.setbit：设置值，只能存储0和1，适用二元判断类型
+b.getbit：获取值
+c.bitcount：统计1的数量，可指定范围
+d.bitop：可取交集(and)、并集(or)、非(not)、异或(xor)
+e.bitpos：第一个获取某种状态的偏移量
+ 
+3.Bitmaps并不是任何场合都适合，在某些场合适用会有意想不到的效果。
+  
+位数组的顺序和平时书写的顺序完全相反，比如一个二进制01100010,0位是最右端的，而redis
+二进制0位是最左端的0
+ 
+bitmaps适用于进行快速、简单、实时统计、包括独立访客，日活用户的统计，并且bitmaps极其节省空间
+ 
+现代计算机用二进制（位）作为信息的基础单位，1个字节等位8位，例如“big”字符串是由3个字节组成，
+但实际在计算机存储时将其用二进制表示，“big”分别对应的ASCII码分别是98、105、103，
+对应的二进制分别是01100010、01101001和01100111，如下： 
+|<--b-->|<--i-->|<--g-->|
+01100010|01101001|01100111
+ 
+getbit与setbit实现：
+1、getbit key <offset>
+计算byte = offset / 8 ，求得在数组索引第几个字节上
+计算bit = （offset % 8） + 1，求得偏移位是第几个二进制位，不是索引位置，索引位置不加1，offset % 8
+ 
+2、setbit key <offset> <value>
+计算所需位数组长度，len=（offset/8）+ 1,求得需要几个字节
+检查key保存的位数组长度是否小于len，小于则扩展字符串长度位len字节，并将扩展的二进制位值设置为0
+计算byte=offset/8，该值记录了offset偏移量指定的二进制位保存在位数组的哪个字节
+计算bit=（offset % 8）+1，记录offset偏移量指定的二进制位是byte字节的第几个二进制位
+设值
+返回原来的值
+ 
+应用场景：
+day1：日活用户
+day2：日活用户
+day3：日活用户
+...
+bitop and total day1 day2 day3 ....统计出这些天连续活跃的用户数 
+``` 
+
+HyperLogLog
+```text
+有一定误差，会去重
+Redis 在 2.8.9 版本添加了 HyperLogLog 结构。
+Redis HyperLogLog 是用来做基数统计的算法，HyperLogLog 的优点是，在输入元素的数量或者体积非常非常大时，计算基数所需的空间总是固定 的、并且是很小的。
+在 Redis 里面，每个 HyperLogLog 键只需要花费 12 KB 内存，就可以计算接近 2^64 个不同元素的基 数。这和计算基数时，元素越多耗费内存就越多的集合形成鲜明对比。
+但是，因为 HyperLogLog 只会根据输入元素来计算基数，而不会储存输入元素本身，所以 HyperLogLog 不能像集合那样，返回输入的各个元素。
+什么是基数?
+比如数据集 {1, 3, 5, 7, 5, 7, 8}， 那么这个数据集的基数集为 {1, 3, 5 ,7, 8}, 基数(不重复元素)为5。 基数估计就是在误差可接受的范围内，快速计算基数。
+ 
+1、PFADD key element [element ...] 添加指定元素到 HyperLogLog 中。
+2、PFCOUNT key [key ...] 返回给定 HyperLogLog 的基数估算值。
+3、PFMERGE destkey sourcekey [sourcekey ...] 将多个 HyperLogLog 合并为一个 HyperLogLog
+```
+
+发布订阅
+```text
+功能简单，消息不可靠(主要使用一些MQ来处理，redis不做主用)
+命令：
+1、PSUBSCRIBE pattern [pattern ...] 
+订阅一个或多个符合给定模式的频道。
+ 
+2、PUBSUB subcommand [argument [argument ...]]  
+查看订阅与发布系统状态。
+查看活跃的频道：pubsub channels [pattern]
+查看频道订阅次数：pubsub numsub [channel...]
+查看模式订阅数：pubsub numpat
+ 
+3、PUBLISH channel message 
+将信息发送到指定的频道。
+ 
+4、PUNSUBSCRIBE [pattern [pattern ...]] 
+退订所有给定模式的频道。
+ 
+5、SUBSCRIBE channel [channel ...] 
+订阅给定的一个或多个频道的信息。
+客户端在执行订阅命令之后进入了订阅状态，只能接受subscribe、psubscribe、unsubscribe、punsubscribe四个命令
+新开启的订阅客户端，无法接受到该频道之前的消息，redis不会对发布的消息持久化
+ 
+6、UNSUBSCRIBE [channel [channel ...]] 
+指退订给定的频道。
+```
+
+GEO
+```text
+使用geohash存储地理位置的坐标
+使用有序集合zset存储地理位置的集合
+ 
+redis目前已经到了3.2版本，3.2版本里面新增的一个功能就是对GEO(地理位置)的支持。
+ 
+地理位置大概提供了6个命令，分别为：
+GEOADD
+GEODIST
+GEOHASH
+GEOPOS
+GEORADIUS
+GEORADIUSBYMEMBER 
+ 
+1.命令：GEOADD key longitude latitude member [longitude latitude member ...]
+命令描述：将指定的地理空间位置（纬度、经度、名称）添加到指定的key中。
+返回值：添加到sorted set元素的数目，但不包括已更新score的元素。 
+ 
+2.命令：GEODIST key member1 member2 [unit]
+命令描述：
+返回两个给定位置之间的距离。如果两个位置之间的其中一个不存在， 那么命令返回空值。指定单位的参数 unit 必须是以下单位的其中一个：
+m 表示单位为米。
+km 表示单位为千米。
+mi 表示单位为英里。
+ft 表示单位为英尺。
+ 
+3.命令：GEOPOS key member [member ...]
+命令描述：从key里返回所有给定位置元素的位置（经度和纬度）。
+返回值：GEOPOS 命令返回一个数组， 数组中的每个项都由两个元素组成： 第一个元素为给定位置元素的经度， 而第二个元素则为给定位置元素的纬度。当给定的位置元素不存在时， 对应的数组项为空值。
+ 
+4.命令：GEOHASH key member [member ...]
+命令描述：返回一个或多个位置元素的 Geohash 表示。通常使用表示位置的元素使用不同的技术，使用Geohash位置52点整数编码。由于编码和解码过程中所使用的初始最小和最大坐标不同，编码的编码也不同于标准。此命令返回一个标准的Geohash
+返回值：一个数组， 数组的每个项都是一个 geohash 。 命令返回的 geohash 的位置与用户给定的位置元素的位置一一对应。  
+ 
+5.命令：GEORADIUS key longitude latitude radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count]
+命令描述：
+以给定的经纬度为中心， 返回键包含的位置元素当中， 与中心的距离不超过给定最大距离的所有位置元素。
+范围可以使用以下其中一个单位：
+m 表示单位为米。
+km 表示单位为千米。
+mi 表示单位为英里。
+ft 表示单位为英尺。
+在给定以下可选项时， 命令会返回额外的信息：
+ 
+WITHDIST: 在返回位置元素的同时， 将位置元素与中心之间的距离也一并返回。 距离的单位和用户给定的范围单位保持一致。
+WITHCOORD: 将位置元素的经度和维度也一并返回。
+WITHHASH: 以 52 位有符号整数的形式， 返回位置元素经过原始 geohash 编码的有序集合分值。 这个选项主要用于底层应用或者调试， 实际中的作用并不大。
+命令默认返回未排序的位置元素。 通过以下两个参数， 用户可以指定被返回位置元素的排序方式：
+ 
+ASC: 根据中心的位置， 按照从近到远的方式返回位置元素。
+DESC: 根据中心的位置， 按照从远到近的方式返回位置元素。
+在默认情况下， GEORADIUS 命令会返回所有匹配的位置元素。 虽然用户可以使用 COUNT <count> 选项去获取前 N 个匹配元素， 但是因为命令在内部可能会需要对所有被匹配的元素进行处理， 所以在对一个非常大的区域进行搜索时， 即使只使用 COUNT 选项去获取少量元素， 命令的执行速度也可能会非常慢。 但是从另一方面来说， 使用 COUNT 选项去减少需要返回的元素数量， 对于减少带宽来说仍然是非常有用的。
+ 
+返回值：
+在没有给定任何 WITH 选项的情况下， 命令只会返回一个像 [“New York”,”Milan”,”Paris”] 这样的线性（linear）列表。
+在指定了 WITHCOORD 、 WITHDIST 、 WITHHASH 等选项的情况下， 命令返回一个二层嵌套数组， 内层的每个子数组就表示一个元素。
+在返回嵌套数组时， 子数组的第一个元素总是位置元素的名字。 至于额外的信息， 则会作为子数组的后续元素， 按照以下顺序被返回：
+ 
+以浮点数格式返回的中心与位置元素之间的距离， 单位与用户指定范围时的单位一致。
+geohash 整数。
+由两个元素组成的坐标，分别为经度和纬度。
+ 
+6.命令：GEORADIUSBYMEMBER key member radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count]
+命令描述：这个命令和 GEORADIUS 命令一样， 都可以找出位于指定范围内的元素， 但是 GEORADIUSBYMEMBER 的中心点是由给定的位置元素决定的。 
+```
+ 
+####redis客户端
+#####jedis 
+jedis版本
+```text
+<dependency>
+    <groupId>redis.clients</groupId>
+    <artifactId>jedis</artifactId>
+    <version>2.9.0</version>
+</dependency>
+使用须知
+在实际项目中使用try catch finally的形式来进行代码编码，使用完关闭连接
+```
+jedis连接池pool
+```text
+
+```
+
+直连和连接池比较
+ 
+连接方式|优点|缺点
+----|:----:|----
+直连|简单方便，适用于少量长连接的场景|1、存在每次新建/关闭TCP连接开销
+2、资源无法控制，极端情况会出现连接泄露
+3、Jedis对象县城不安全  
+连接池|1、无需每次连接都生成Jedis对象，降低开销
+2、使用连接池的形式保护和控制资源的使用|相对于直连，使用性对麻烦，尤其在资源的管理上
+需要很多参数保证，一旦规划不合理也会有问题
+
+连接池配置 
+
+a|b|c
+----|:----:|----
+1|2|3
