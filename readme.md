@@ -8,6 +8,8 @@
 - 4、[https](#related-https)
 - 5、[zookeeper](#related-zookeeper)
 - 6、[redis](#related-redis)
+- 7、[volatile关键字](#related-volatile)
+- 8、[Thread线程中断对比](#related-interrupte)
 
 <a name="related-linux-IO"></a>
 ### 1、linux IO模式
@@ -2626,9 +2628,11 @@ geohash 整数。
 6.命令：GEORADIUSBYMEMBER key member radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count]
 命令描述：这个命令和 GEORADIUS 命令一样， 都可以找出位于指定范围内的元素， 但是 GEORADIUSBYMEMBER 的中心点是由给定的位置元素决定的。 
 ```
- 
+  
 ####redis客户端
-#####jedis 
+ 
+#####jedis
+  
 jedis版本
 ```text
 <dependency>
@@ -2639,24 +2643,33 @@ jedis版本
 使用须知
 在实际项目中使用try catch finally的形式来进行代码编码，使用完关闭连接
 ```
-jedis连接池pool
-```text
-
-```
 
 直连和连接池比较
  
 连接方式|优点|缺点
 ----|:----:|----
-直连|简单方便，适用于少量长连接的场景|1、存在每次新建/关闭TCP连接开销
-2、资源无法控制，极端情况会出现连接泄露
-3、Jedis对象县城不安全  
-连接池|1、无需每次连接都生成Jedis对象，降低开销
-2、使用连接池的形式保护和控制资源的使用|相对于直连，使用性对麻烦，尤其在资源的管理上
-需要很多参数保证，一旦规划不合理也会有问题
+直连|简单方便，适用于少量长连接的场景|1、存在每次新建/关闭TCP连接开销.2、资源无法控制，极端情况会出现连接泄露.3、Jedis对象县城不安全  
+连接池|1、无需每次连接都生成Jedis对象，降低开销.2、使用连接池的形式保护和控制资源的使用|相对于直连，使用性对麻烦，尤其在资源的管理上需要很多参数保证，一旦规划不合理也会有问题
 
 连接池配置 
 
 a|b|c
 ----|:----:|----
 1|2|3
+
+jedis连接池pool
+```text
+
+```
+
+<a name="related-volatile"></a>
+### 7、volatile关键字
+参考[原文链接](http://www.cnblogs.com/dolphin0520/p/3920373.html)
+ 
+ <a name="related-interrupte"></a>
+ ### 8、Thread线程中断对比
+ 方法|说明
+ :----:|:----:
+public static boolean interrupted|测试当前线程是否已经中断。线程的中断状态 由该方法清除。第二次调用将返回 false。
+public boolean isInterrupted()|测试线程是否已经中断。线程的中断状态 不受该方法的影响。
+public void interrupt()|中断线程。
