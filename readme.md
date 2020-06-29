@@ -10,6 +10,7 @@
 - 6、[redis](#related-redis)
 - 7、[volatile关键字](#related-volatile)
 - 8、[Thread线程中断对比](#related-interrupte)
+- 9、[sql](#related-sql)
 
 <a name="related-linux-IO"></a>
 ### 1、linux IO模式
@@ -2673,3 +2674,517 @@ jedis连接池pool
 public static boolean interrupted|测试当前线程是否已经中断。线程的中断状态 由该方法清除。第二次调用将返回 false。
 public boolean isInterrupted()|测试线程是否已经中断。线程的中断状态 不受该方法的影响。
 public void interrupt()|中断线程。
+
+<a name="related-sql"></a>
+### 9、sql基础篇学习
+mysql：我的是5.7.16版本
+ 
+postgresql：我的是9.6.17版本
+ 
+####1、安装
+修改配置文件PostgreSQL\9.6\data\postgresql.conf的listen_addresses，限定链接机器
+控制面板重启Postgre服务
+ 
+启动服务遇到的问题：
+    本地计算机上的postgresql-x64-9.6 服务启动后停止，某些服务在未由其他服务或程序使用时将自动停止
+解决：
+    计算机管理器-》系统工具-》事件查看器-》windows日志-》应用程序-》找到错误原因
+    HKT 致命错误:  已存在的共享内存块仍在使用中
+    HKT 提示:  检查原先的服务器进程是否仍在运行，如果是的话请终止这些进程.    
+    原服务杀掉
+
+cmd管理员启动：
+bin》psql.exe -U postgres   
+输入密码链接服务器
+ 
+退出 
+》\q  
+ 
+直连库 
+bin》psql.exe -U postgres -d xxx
+ 
+####2、三种类型
+- DDL(data definition language 数据定义语言).用来创建或者删除存储数据用的数据库以及数据库种的表等对象
+  - create
+  - drop
+  - alter
+- DML(data manipulation language 数据操纵语言). 对记录的增删改查
+  - select
+  - insert
+  - update
+  - delete
+- DCL(data control language 数据控制语言).用来确认或者取消对数据库种的数据进行的变更。还可以对RDBMS的
+用户是否有权限操作数据库中的对象（数据库表等）进行设定。
+  - commit
+  - rollback
+  - grant       赋予用户操作权限
+  - revoke      取消用户的操作权限
+  
+####3、数据类型指定
+- interger
+- char 定长字符
+  - char(5) 记录'abc'会以'abc  '5个长度存储
+- varchar 可变长字符
+  - varchar(5) 记录'abc'存储的就是3个长度
+- date 日期（年月日）
+ 
+***注意***  
+RDBMS不同，长度单位也不同。
+Oracle中使用varchar2型（有varchar，不推荐）
+  
+####4、约束
+除了数据类型之外，对列中存储的数据进行限制或者追加条件的功能。
+- null 
+- notnull 
+- 主键约束
+- 键（指定特定数据时使用的列的组合）
+- 主键（确定唯一行数据的列）
+ 
+####5、dml操作
+```text
+出现的问题：MySQL数据库插入中文时出现Incorrect string value: 'xxxxx' for column 'xxxxx' at row 1...
+解决：在用sql语句建表的时候加入 DEFAULT CHARSET=utf8 即可  
+ 
+SELECT语句是由select子句和from子句组成的，但是from子句并非必须。
+select 10 * 2 as num;
+但是在oracle中from子句是必须的。
+
+聚合函数：
+count(*) 计算所有行，不区分null值（如果所有n行记录都是null，结果也是显示n）
+count(parameter) 计算参数列不为null的值
+ 
+使用聚合函数和GROUP BY子句时，需要注意以下4点
+1、只能写在select子句之中
+2、group by子句中不能使用select子句中列的别名（执行其实没有错误postgresql和mysql，是常见写法错误，不是通用sql）
+3、group by子句的聚合结果是无序的
+4、where 子句中不能使用聚合函数
+ 
+聚合函数会排除掉null
+聚合健（group by的列）包含null，会以不确定（空行）表现出来
+ 
+常见错误：
+1、select 子句列包含不在group by中的列（select子句存在非聚合健）
+2、group by子句使用select 子句别名 
+3、group by排序（是随机的）
+4、where子句使用了聚合函数
+ 
+order by:
+注意：
+    1、可以使用select子句中未包含的列进行排序。group by   having不可以。
+    2、不要使用列编号（虽然可以使用，阅读不方便，SQL-92中指出该排序功能将来会被删除） 
+ 
+多行insert：
+    -- 多行INSERT（Oracle之外）
+    INSERT INTO a VALUES (xxx),
+                         (xxx),
+                         (xxx);
+ 
+     -- Oracle中的多行INSERT
+     INSERT ALL INTO a VALUES (xxx)
+                INTO a VALUES (xxx)
+                INTO a VALUES (xxx)
+     SELECT * FROM DUAL;
+    DUAL是Oracle特有（安装必选项）的一种临时表。SELECT * FROM DUAL只是临时性的，并没有任何意义
+    
+```
+***书写顺序：select-》from-》where-》group by-》having-》order by***
+ 
+***执行顺序：from-》where-》group by-》select-》order by***
+ 
+事务 
+```text
+DBMS事务4大特性（ACID）
+a)原子性（Atomicity）：是指再事务结束时，其中所包含的更新处理要么全部执行，要么完全不执行。
+b)一致性（Consistency）：是指事务中包含的处理要满足数据库提前设置的约束，如主键约束或者NOT NULL约束等。例如设置了not null约束的列试图插入
+                         违反主键约束的记录就会出错，无法执行，这些不合法的SQL会被回滚。一致性也成为完整性。
+c)隔离性（Isolation）：保证不同事务之间互不干扰。在某个事务中的操作，其他事务是看不见的，只有commit之后才能看到
+d)持久性（Durability）：是指在事务结束后，DBMS能够保证该时间点的数据状态会被保存。
+ 
+事务通用结束：
+commit/rollback
+事务开始：
+    SQLSERVER、PostgreSQL：
+        Begin transaction
+    MySql：
+        start transaction
+    Oracle、DB2：
+        无
+    
+事务再数据库建立链接的时候就已经悄悄开始了，并不需要用户再明确发出开始指令。
+如何区分各个事务？
+    1、每条SQL语句就是一个事务（自动提交模式）
+    2、知道用户执行commit或者rollback为止算作一个事务
+     
+默认使用自动提交模式的DBMS有：SQL Server、PostgresSQL、MySQL。
+Oracle模式使用2模式                       
+```
+
+###复杂查询
+####视图 
+ 视图和表：从SQL角度看，试图和表是相同的，表存的是实际数据，而视图保存的是select语句（本身并不存储数据）
+ ```text
+create view xxx (aaa, bbb)
+as
+select qqq, count(*) from product group by qqq;
+列顺序对应，select在as之后 
+ 
+视图限制：
+a）定义视图时不能使用order by子句（试了下postgresql，mysql可以使用，不建议，非通用）
+b）对视图进行更新    
+    以下特定条件可以更新
+    select子句中未使用distinct
+    from子句中只有一张表
+    未使用group by子句
+    未使用having子句
+ 
+/* 
+  INSERT语句之前
+  必须要执行以下代码将试图设置为可以更新。
+*/
+CREATE OR REPLACE RULE insert_rule
+AS ON INSERT
+TO  ProductJim DO INSTEAD
+INSERT INTO Product VALUES (
+           new.product_id, 
+           new.product_name, 
+           new.product_type, 
+           new.sale_price, 
+           new.purchase_price, 
+           new.regist_date);
+ 
+删除关联视图:
+    drop view xxx cascade; 
+```
+####子查询
+与视图不同，子查询在select语句执行完毕之后就会消失，也就是一次性视图。需要命名子查询。标量子查询就是只能返回一行一列的子查询
+ 
+###函数
+numeric数据类型numeric(全体位数，小数位数)
+####五种
+- 算术函数
+- 字符串函数
+- 日期函数
+- 转换函数
+- 聚合函数
+
+算术函数 
+- ABS函数。计算绝对值的函数
+- MOD函数。计算除法余数（求余）。
+    主流dbms都支持mod函数，只有SQL Server不支持该函数（未去验证）。
+    使用%求余
+- ROUND函数。四舍五入
+    round(对象数值，保留小数的位数)
+ 
+字符串函数
+- ||函数。拼接，需要注意，有值和null拼接结果是null。在SQL Server（未验证）和MySQL中无法使用。
+    SQL Server：用 + 连接，在SQL Server2012及其之后的版本中也可以使用concat函数。
+    Mysql：可以改成concat(xxx,xxx)函数
+    试了下postgresql也可以使用concat函数
+- LENGTH函数。字符串长度。无法在SQL Server中使用（未验证）
+    SQL Server使用LEN函数计算字符串长度
+    Mysql中存储的是中文时，使用length函数得到的结果并非字符串长度，有个自有函数***char_length***获取字符串长度。试验了下
+        POSTGRESQL也是可以使用的
+- LOWER函数。小写转换，只针对英文字母使用
+- UPPER函数。大写转换
+- REPLACE函数。字符串替换。replace(对象字符串，待替换字符串，需要用什么字符串替换)
+- SUBSTRING函数。字符串截取。substring(对象字符串 from 截取的起始位置 for 截取的字符数)
+        PostgreSQL和MySQL支持该语法
+        SQL Server语法：substring(对象字符串，截取的起始位置，截取的字符数) （未验证）
+        Oracel和DB2语法：substr(对象字符串，截取的起始位置，截取的字符数)（未验证）
+        
+日期函数
+- CURRENT_DATE：返回当前日期  select cuurent_date
+```text
+该函数在SQL Server中无法执行。
+SQL Server：select cast(current_timestamp as date) as cur_date;
+Oracle：指定临时表。select current_date from dual;
+DB2：select current date from sysibm.sysdummy1;
+```  
+- CURRENT_TIME：当前时间 select current_time;
+```text
+     该函数在SQL Server中无法执行。
+     SQL Server：select cast(current_timestamp as time) as cur_date;
+     Oracle：指定临时表。select current_time from dual;
+     DB2：select current time from sysibm.sysdummy1;
+```
+- CURRENT_TIMESTAMP：当前日期和时间 select current_timestamp;
+```text 
+     Oracle：指定临时表。select current_timestamp from dual;
+     DB2：select current timestamp from sysibm.sysdummy1;
+```
+- EXTRACT：截取日期元素
+```text 
+     extract(日期元素 from 日期)
+     --PostgreSQL, MySQL
+     SELECT CURRENT_TIMESTAMP,
+            EXTRACT(YEAR   FROM CURRENT_TIMESTAMP) AS year,
+            EXTRACT(MONTH  FROM CURRENT_TIMESTAMP) AS month,
+            EXTRACT(DAY    FROM CURRENT_TIMESTAMP) AS day,
+            EXTRACT(HOUR   FROM CURRENT_TIMESTAMP) AS hour,
+            EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) AS minute,
+            EXTRACT(SECOND FROM CURRENT_TIMESTAMP) AS second;
+     --Oracle
+     SELECT CURRENT_TIMESTAMP,
+            EXTRACT(YEAR   FROM CURRENT_TIMESTAMP) AS year,
+            EXTRACT(MONTH  FROM CURRENT_TIMESTAMP) AS month,
+            EXTRACT(DAY    FROM CURRENT_TIMESTAMP) AS day,
+            EXTRACT(HOUR   FROM CURRENT_TIMESTAMP) AS hour,
+            EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) AS minute,
+            EXTRACT(SECOND FROM CURRENT_TIMESTAMP) AS second
+     FROM DUAL;
+     --DB2
+     SELECT CURRENT TIMESTAMP,
+            EXTRACT(YEAR   FROM CURRENT TIMESTAMP) AS year,
+            EXTRACT(MONTH  FROM CURRENT TIMESTAMP) AS month,
+            EXTRACT(DAY    FROM CURRENT TIMESTAMP) AS day,
+            EXTRACT(HOUR   FROM CURRENT TIMESTAMP) AS hour,
+            EXTRACT(MINUTE FROM CURRENT TIMESTAMP) AS minute,
+            EXTRACT(SECOND FROM CURRENT TIMESTAMP) AS second
+       FROM SYSIBM.SYSDUMMY1;
+     --SQL Server
+     SELECT CURRENT_TIMESTAMP,
+            DATEPART(YEAR   , CURRENT_TIMESTAMP) AS year,
+            DATEPART(MONTH  , CURRENT_TIMESTAMP) AS month,
+            DATEPART(DAY    , CURRENT_TIMESTAMP) AS day,
+            DATEPART(HOUR   , CURRENT_TIMESTAMP) AS hour,
+            DATEPART(MINUTE , CURRENT_TIMESTAMP) AS minute,
+            DATEPART(SECOND , CURRENT_TIMESTAMP) AS second;        
+```
+ 
+转换函数
+- CAST：函数
+```text
+--DB2
+SELECT CAST('0001' AS INTEGER) AS int_col
+    FROM SYSIBM.SYSDUMMY1;
+--Oracle
+SELECT CAST('0001' AS INTEGER) AS int_col
+    FROM DUAL;
+--MySQL
+SELECT CAST('0001' AS SIGNED INTEGER) AS int_col;
+--SQL Server, PostgreSQL
+SELECT CAST('0001' AS INTEGER) AS int_col;
+``` 
+- COALESCE：将NULL转换为其他值
+```text
+--DB2
+SELECT COALESCE(NULL, 1)           AS col_1,
+       COALESCE(NULL, 'test', NULL)       AS col_2,
+       COALESCE(NULL, NULL, '2009-11-01') AS col_3
+  FROM SYSIBM.SYSDUMMY1;
+--Oracle
+SELECT COALESCE(NULL, 1)                  AS col_1,
+       COALESCE(NULL, 'test', NULL)       AS col_2,
+       COALESCE(NULL, NULL, '2009-11-01') AS col_3
+  FROM DUAL;
+--SQL Server, PostgreSQL, MySQL
+SELECT COALESCE(NULL, 1)                  AS col_1,
+       COALESCE(NULL, 'test', NULL)       AS col_2,
+       COALESCE(NULL, NULL, '2009-11-01') AS col_3;  
+       
+```
+
+###谓词
+谓词就是返回值为真值的函数
+- like
+- between
+- is null、is not null
+- in
+- exists
+
+####like
+```text
+字符串的部分一致查询
+a）前方一致：查询条件的字符串和查询对象字符串起始部分相同
+b）中间一致：选取出查询对象字符串中含有作为查询条件的字符串，开始，中间或者结束都算
+c）后方一致：查询条件的字符串和查询对象字符串末尾部分相同
+%：多个匹配
+_：单个匹配
+```
+####between
+```text
+范围查询（包含临界值）
+SELECT product_name, sale_price
+  FROM Product
+ WHERE sale_price BETWEEN 100 AND 1000;
+```
+####is null、is not null
+```text
+SELECT product_name, purchase_price
+  FROM Product
+ WHERE purchase_price IS NULL;
+```
+####in,not in(or的简便用法)
+```text
+不能处理null
+不同于其他谓词，可以使用子查询
+```
+####exists,not exists
+```text
+exists通常使用关联子查询作为参数
+select product_name,sale_price from product p where exists(select 1 from shopproduct sp where sp.shop_id='000E' and sp.product_id=p.product_id);
+```
+###case表达式(标准sql)
+- 简单case表达式
+```text
+case <表达式>
+    when <表达式> then <表达式>
+    when <表达式> then <表达式>
+    ...
+    else <表达式>
+end
+```
+- 搜索case表达式
+```text
+case when <求值表达式> then <表达式>
+     when <求值表达式> then <表达式>
+     ...
+     else <表达式>
+end     
+```
+
+###集合运算
+####表的加法-UNION（union）
+```text
+union
+求多张表的并集，会去除重复记录
+
+union all保留重复记录
+注意：
+a）作为运算对象的记录的列数必须相同
+b）作为运算对象的记录中列的类型必须一致
+c）可以使用任何select语句，但order by子句只能在最后使用一次 
+```
+####选取表中公共部分-INTERSECT（intersect）
+```text
+用法和union相同
+Oracle、SQL Server、DB2、PostgreSQL支持
+MySQL不支持（测试过）
+```
+####求差集，去掉共有的集合部分，保留自己独有部分-EXCEPT（except）
+```text
+用法和union相同
+SQL Server、DB2、PostgreSQL支持
+Oracle不支持，使用特有的MINUS运算符（未测试）
+MySQL不支持（测试过）
+```
+
+####表的联结（以列为单位对表进行联结）
+union是以行为单位进行操作，而联结（join）是以列（横向）为单位进行操作。
+大体分为内联结和外联结
+- 内联结
+```text
+inner join
+select ... from a inner join b on a.x=b.x;
+on其实还可以使用非=等谓词，但是基本用=来联结
+```
+- 外联结
+```text
+outer join
+a）left outer join
+b）right outer join
+要点：
+①选取出单张表中全部信息
+②选择主表
+```
+- 交叉联结（笛卡尔乘积，基本不使用）
+```text
+cross join
+select a.xxx,b.zzz ... from qqq a cross join www b;
+```
+
+###SQL高级聚合处理
+####窗口函数（MySQL中暂不支持，已测）
+可以进行排序，生成序列号等一般聚合函数无法实现的高级操作
+
+窗口函数也成为OLAP(online analytical processing对数据库进行实时分析处理)函数，再OracleSQL和Server中称为分析函数
+```text
+示例：
+<窗口函数> over ([partition by <列清单>] order by <排序用列清单>)    []中的内容可以省略
+rank：
+    select xxx,qqq,ccc,rank() over (partition by qqq order by ccc) ranking from table_name;
+``` 
+ 能够作为窗口函数使用的函数
+ - 能够作为窗口函数的聚合函数（sum、avg、count、max、min）
+ - rank、dense_rank、row_number等专用窗口函数
+ 
+####rank
+ ```text
+用来计算记录排序的函数
+select xxx,qqq,ccc,rank() over (partition by qqq order by ccc) ranking from table_name;
+
+partition by：设定排序的对象范围（分组）
+order by：指定按照哪一列、何种顺序排序（有分组按照分组内排序，无分组全部排）
+
+排序的时候可能出现相同的序号，比如同时排在第2号的有两个，再下个序号就是4了。如果希望不跳号可以使用其他的窗口函数
+```
+
+####dense_rank
+ ```text
+不跳号，但是相同的号非唯一。即：两个2后的号是3，而不是两个2一个是2，一个是3这种唯一号，想保持唯一的话可以使用row_number()
+```
+
+####row_number
+ ```text
+不跳号，号唯一。
+```
+
+<h4>窗口函数有特定的位置，必须写在select子句中，over子句中必须要使用order by，这里的order by只是用来决定窗口函数按照什么样的顺序进行计算，而不是决定最终得排序结果（个例是按照这个排序，没试过），可以在最后加一个order by来排序</h4>
+所有的聚合函数都可以当作窗口函数
+```text
+例：
+计算在本条记录以及之前记录的平均值
+select product_id,product_name,sale_price,avg(sale_price) over (order by product_id) avg from product;
+
+计算移动平均：
+计算在本条记录以及之前2条最近记录的平均值
+select product_id,product_name,sale_price,avg(sale_price) over (order by product_id rows 2 preceding) avg from product;
+
+计算在本条记录前1条以及之后1条最近记录的3条平均值
+select product_id,product_name,sale_price,avg(sale_price) over (order by product_id rows between 1 preceding and 1 following) avg from product;
+
+计算在本条记录以及之后2条最近记录的3条平均值
+select product_id,product_name,sale_price,avg(sale_price) over (order by product_id rows between 0 preceding and 2 following) avg from product;
+```
+####grouping运算符
+group by不能同时得到小计和合计。MySQL仅支持rollup
+
+超级分组记录（合计行）默认使用null作为聚合键
+- rollup
+```text
+可同时得出小计和合计，但是不能区分null
+oracle、sql server、db2、postgresql
+    select ... from ... group by rollup(xxx);
+    
+mysql
+    select ... from ... group by xxx with rollup; 
+    
+配合grouping使用    
+可同时得出小计和合计，可区分null，该函数在其参数列的值为超级分组记录所产生的null时返回1，其他情况返回0
+select grouping(aaa) aaa,grouping(bbb) bbb,sum(ccc) from product group by rollup(aaa,bbb);
+
+此时产生的数据不够明了，因为aaa和bbb列全是1、0。需要返回正常的值，则可以配上case使用
+select 
+case when grouping(product_type)=1 then '合计' else product_type end product_type, 
+case when grouping(regist_date)=1 then '合计' else cast(regist_date as varchar(16)) end regist_date,
+sum(sale_price) from product group by rollup(product_type,regist_date);
+
+mysql不支持grouping（已测试）
+```
+- cube
+```text
+数据积木
+select 
+case when grouping(product_type)=1 then '合计' else product_type end product_type, 
+case when grouping(regist_date)=1 then '合计' else cast(regist_date as varchar(16)) end regist_date,
+sum(sale_price) from product group by cube(product_type,regist_date);
+和rollup使用方法相同，但是会多出分组数据。将聚合键中所有可能的组合的汇总结果集中到一个结果中。2^n（n是聚合键的个数）
+而rollup是n+1
+```
+- grouping sets
+```text
+该运算符可用于从rollup或者cube的结果中取出部分记录
+select case when grouping(product_type)=1 then '商品种类 合计' else product_type end product_type,
+case when grouping(regist_date)=1 then '登记日期 合计' else cast(regist_date as varchar(16)) end regist_date,
+sum(sale_price) sum_price from product group by grouping sets(product_type, regist_date);
+```
