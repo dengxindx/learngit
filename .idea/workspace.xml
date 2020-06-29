@@ -3,7 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="d4cd7fbe-5e56-4992-97a5-baa422489d5a" name="Default" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/readme.md" beforeDir="false" afterPath="$PROJECT_DIR$/readme.md" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -20,8 +19,8 @@
         <entry file="file://$PROJECT_DIR$/readme.md">
           <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
             <state split_layout="SPLIT">
-              <first_editor relative-caret-position="725">
-                <caret line="3189" column="3" selection-start-line="3189" selection-start-column="3" selection-end-line="3189" selection-end-column="3" />
+              <first_editor relative-caret-position="103">
+                <caret line="3174" column="7" selection-start-line="3174" selection-start-column="7" selection-end-line="3174" selection-end-column="7" />
               </first_editor>
               <second_editor />
             </state>
@@ -70,7 +69,7 @@
       </MavenGeneralSettings>
     </option>
   </component>
-  <component name="ProjectFrameBounds" extendedState="7">
+  <component name="ProjectFrameBounds" extendedState="6">
     <option name="x" value="240" />
     <option name="y" value="130" />
     <option name="width" value="1440" />
@@ -184,18 +183,18 @@
       <workItem from="1591701009583" duration="8186000" />
       <workItem from="1592624079771" duration="8288000" />
       <workItem from="1592827791319" duration="4577000" />
-      <workItem from="1593435079493" duration="1204000" />
+      <workItem from="1593435079493" duration="1936000" />
+      <workItem from="1593437202329" duration="87000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="284348000" />
+    <option name="totallyTimeSpent" value="285167000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
-    <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" weight="0.11247335" />
+      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.11353944" />
       <window_info id="Structure" order="1" weight="0.25" />
       <window_info id="Designer" order="2" />
       <window_info id="Image Layers" order="3" />
@@ -211,8 +210,8 @@
       <window_info anchor="bottom" id="Cvs" order="6" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="7" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="8" />
-      <window_info anchor="bottom" id="Version Control" order="9" />
-      <window_info anchor="bottom" id="Terminal" order="10" weight="0.3177874" />
+      <window_info anchor="bottom" id="Version Control" order="9" weight="0.329718" />
+      <window_info active="true" anchor="bottom" id="Terminal" order="10" visible="true" weight="0.3177874" />
       <window_info anchor="bottom" id="Event Log" order="11" side_tool="true" />
       <window_info anchor="right" id="Maven" order="0" />
       <window_info anchor="right" id="Commander" order="1" weight="0.4" />
@@ -267,8 +266,8 @@
     <entry file="file://$PROJECT_DIR$/readme.md">
       <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
         <state split_layout="SPLIT">
-          <first_editor relative-caret-position="725">
-            <caret line="3189" column="3" selection-start-line="3189" selection-start-column="3" selection-end-line="3189" selection-end-column="3" />
+          <first_editor relative-caret-position="103">
+            <caret line="3174" column="7" selection-start-line="3174" selection-start-column="7" selection-end-line="3174" selection-end-column="7" />
           </first_editor>
           <second_editor />
         </state>
