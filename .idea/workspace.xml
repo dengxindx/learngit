@@ -3,6 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="d4cd7fbe-5e56-4992-97a5-baa422489d5a" name="Default" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/readme.md" beforeDir="false" afterPath="$PROJECT_DIR$/readme.md" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -19,8 +20,13 @@
         <entry file="file://$PROJECT_DIR$/readme.md">
           <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
             <state split_layout="SPLIT">
-              <first_editor relative-caret-position="103">
-                <caret line="3174" column="7" selection-start-line="3174" selection-start-column="7" selection-end-line="3174" selection-end-column="7" />
+              <first_editor relative-caret-position="476">
+                <caret line="3197" selection-start-line="3197" selection-end-line="3197" />
+                <folding>
+                  <element signature="e#0#1313#0" expanded="true" />
+                  <element signature="imports" expanded="true" />
+                  <element signature="imports" expanded="true" />
+                </folding>
               </first_editor>
               <second_editor />
             </state>
@@ -44,12 +50,13 @@
       <find>watch</find>
       <find>一般情况</find>
       <find>related-redis</find>
-      <find>related-sql</find>
       <find>selectors模块</find>
       <find>--</find>
       <find>-</find>
       <find>sql</find>
       <find>cast</find>
+      <find>related-sql</find>
+      <find>related-sql2</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -80,8 +87,6 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
-      <pane id="Scope" />
-      <pane id="PackagesPane" />
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -98,6 +103,8 @@
           <select />
         </subPane>
       </pane>
+      <pane id="Scope" />
+      <pane id="PackagesPane" />
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -185,16 +192,19 @@
       <workItem from="1592827791319" duration="4577000" />
       <workItem from="1593435079493" duration="1936000" />
       <workItem from="1593437202329" duration="87000" />
+      <workItem from="1593437374163" duration="322000" />
+      <workItem from="1593523195847" duration="60000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="285167000" />
+    <option name="totallyTimeSpent" value="285549000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
+    <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.11353944" />
+      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.11567164" />
       <window_info id="Structure" order="1" weight="0.25" />
       <window_info id="Designer" order="2" />
       <window_info id="Image Layers" order="3" />
@@ -266,8 +276,13 @@
     <entry file="file://$PROJECT_DIR$/readme.md">
       <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
         <state split_layout="SPLIT">
-          <first_editor relative-caret-position="103">
-            <caret line="3174" column="7" selection-start-line="3174" selection-start-column="7" selection-end-line="3174" selection-end-column="7" />
+          <first_editor relative-caret-position="476">
+            <caret line="3197" selection-start-line="3197" selection-end-line="3197" />
+            <folding>
+              <element signature="e#0#1313#0" expanded="true" />
+              <element signature="imports" expanded="true" />
+              <element signature="imports" expanded="true" />
+            </folding>
           </first_editor>
           <second_editor />
         </state>

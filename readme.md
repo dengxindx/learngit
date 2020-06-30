@@ -11,6 +11,7 @@
 - 7、[volatile关键字](#related-volatile)
 - 8、[Thread线程中断对比](#related-interrupte)
 - 9、[sql](#related-sql)
+- 10、[sql进阶](#related-sql2)
 
 <a name="related-linux-IO"></a>
 ### 1、linux IO模式
@@ -3188,3 +3189,9 @@ select case when grouping(product_type)=1 then '商品种类 合计' else produc
 case when grouping(regist_date)=1 then '登记日期 合计' else cast(regist_date as varchar(16)) end regist_date,
 sum(sale_price) sum_price from product group by grouping sets(product_type, regist_date);
 ```
+
+<a name="related-sql2"></a>
+### 10、sql进阶篇学习
+mysql：我的是5.7.16版本
+postgresql：我的是9.6.17版本
+
